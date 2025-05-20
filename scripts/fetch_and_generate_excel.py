@@ -6,7 +6,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Load env vars
-shop_url = os.environ["SHOPIFY_STORE_URL"]
+shop_url = "https://aneem.in"
 access_token = "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"  # Use the access token instead of API key and password
 
 # Step 1: Fetch orders from Shopify
