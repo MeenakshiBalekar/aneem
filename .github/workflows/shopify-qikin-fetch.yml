@@ -24,7 +24,6 @@ jobs:
           SHOPIFY_API_KEY: ${{ secrets.SHOPIFY_API_KEY }}
           SHOPIFY_API_PASSWORD: ${{ secrets.SHOPIFY_API_PASSWORD }}
           SHOPIFY_STORE_URL: ${{ secrets.SHOPIFY_STORE_URL }}
-          QIKIN_API_TOKEN: ${{ secrets.QIKIN_API_TOKEN }}
         run: python scripts/fetch_and_generate_excel.py
 
       - name: Upload Excel as artifact
