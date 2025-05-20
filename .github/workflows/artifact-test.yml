@@ -12,7 +12,7 @@ jobs:
         run: echo "Hello GitHub Actions!" > hello.txt
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: hello-artifact
           path: hello.txt
