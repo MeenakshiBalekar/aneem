@@ -2,23 +2,23 @@ import os
 import requests
 import pandas as pd
 
-
 # Load env vars
 shop_url = os.environ["SHOPIFY_STORE_URL"]
-access_token = os.environ["SHOPIFY_ACCESS_TOKEN"]
+access_token = os.environ["SHOPIFY_ACCESS_TOKEN"]  # Use the access token instead of API key and password
 
 # Step 1: Fetch orders from Shopify
 def fetch_shopify_orders():
     url = f"{shop_url}/admin/api/2023-10/orders.json?status=any"
+    
     headers = {
         "Authorization": f"Bearer {access_token}",  # Bearer token authentication
         "Content-Type": "application/json"
     }
-     response = requests.get(url, headers=headers, verify=False)  # Use headers for authentication
+    
+    response = requests.get(url, headers=headers, verify=False)  # Use headers for authentication
     response.raise_for_status()  # This will raise an exception if the response is an error
     print("Using store URL:", shop_url)
     return response.json()["orders"]
-
 
 # Step 3: Process data and write to Excel
 def create_excel(orders):
