@@ -28,7 +28,7 @@ jobs:
         run: python scripts/fetch_and_generate_excel.py
 
       - name: Upload Excel as artifact
-        uses: actions/upload-artifact@v3.1.3
+        uses: actions/upload-artifact@v2
         with:
           name: order-report
           path: order_report.xlsx
