@@ -6,7 +6,6 @@ import pandas as pd
 shop_url = os.environ["SHOPIFY_STORE_URL"]
 api_key = os.environ["SHOPIFY_API_KEY"]
 api_pass = os.environ["SHOPIFY_API_PASSWORD"]
-qikin_token = os.environ["QIKIN_API_TOKEN"]
 
 # Step 1: Fetch orders from Shopify
 def fetch_shopify_orders():
