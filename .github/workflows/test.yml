@@ -13,7 +13,7 @@ jobs:
           echo "Hello from GitHub Actions!" > test.txt
 
       - name: Upload dummy artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-artifact
           path: test.txt
