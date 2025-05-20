@@ -1,0 +1,19 @@
+name: Test Artifact Upload
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create dummy file
+        run: |
+          echo "Hello from GitHub Actions!" > test.txt
+
+      - name: Upload dummy artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-artifact
+          path: test.txt
