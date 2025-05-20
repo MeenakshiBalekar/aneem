@@ -14,17 +14,6 @@ def fetch_shopify_orders():
     response.raise_for_status()
     return response.json()["orders"]
 
-# Step 2: Fetch delivery method from Qikin
-def fetch_qikin_delivery(order_id):
-    # Placeholder: replace with real Qikin endpoint
-    url = f"https://api.qikin.com/deliveries/{order_id}"
-    headers = {"Authorization": f"Bearer {qikin_token}"}
-    try:
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()
-        return resp.json().get("delivery_type", "unknown")
-    except:
-        return "unknown"
 
 # Step 3: Process data and write to Excel
 def create_excel(orders):
@@ -42,8 +31,7 @@ def create_excel(orders):
                 "Size": item.get("variant_title", ""),
                 "City": shipping.get("city", ""),
                 "State": shipping.get("province", ""),
-                "COD or Paid": "COD" if order.get("payment_gateway_names", [""])[0] == "cash_on_delivery" else "Paid",
-                "Delivery Type": fetch_qikin_delivery(order.get("id"))
+                "COD or Paid": "COD" if order.get("payment_gateway_names", [""])[0] == "cash_on_delivery" else "Paid"
             })
 
     df = pd.DataFrame(data)
