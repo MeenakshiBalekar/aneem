@@ -1,6 +1,10 @@
 import os
 import requests
 import pandas as pd
+from openpyxl import Workbook
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Load env vars
 shop_url = os.environ["SHOPIFY_STORE_URL"]
@@ -13,8 +17,7 @@ def fetch_shopify_orders():
     response = requests.get(url, auth=(api_key, api_pass))
     response.raise_for_status()
     return response.json()["orders"]
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 # Step 3: Process data and write to Excel
 def create_excel(orders):
