@@ -4,7 +4,7 @@ import pandas as pd
 
 # Load env vars
 shop_url = os.environ["SHOPIFY_STORE_URL"]
-access_token = os.environ["SHOPIFY_ACCESS_TOKEN"]  # Use the access token instead of API key and password
+access_token = "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"  # Use the access token instead of API key and password
 
 # Step 1: Fetch orders from Shopify
 def fetch_shopify_orders():
