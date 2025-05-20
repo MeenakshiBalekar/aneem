@@ -16,8 +16,9 @@ def fetch_shopify_orders():
     url = f"{shop_url}/admin/api/2023-10/orders.json?status=any"
     response = requests.get(url, auth=(api_key, api_pass),verify=False)
     response.raise_for_status()
+    print("Using store URL:", shop_url)
     return response.json()["orders"]
-print("Using store URL:", shop_url)
+
 
 # Step 3: Process data and write to Excel
 def create_excel(orders):
