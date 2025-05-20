@@ -1,6 +1,9 @@
 import os
 import requests
 import pandas as pd
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Load env vars
 shop_url = os.environ["SHOPIFY_STORE_URL"]
