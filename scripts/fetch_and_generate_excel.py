@@ -14,7 +14,7 @@ api_pass = os.environ["SHOPIFY_API_PASSWORD"]
 # Step 1: Fetch orders from Shopify
 def fetch_shopify_orders():
     url = f"{shop_url}/admin/api/2023-10/orders.json?status=any"
-    response = requests.get(url, auth=(api_key, api_pass))
+    response = requests.get(url, auth=(api_key, api_pass),verify=False)
     response.raise_for_status()
     return response.json()["orders"]
 
