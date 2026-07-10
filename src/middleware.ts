@@ -44,7 +44,7 @@ export function middleware(req: NextRequest) {
   }
 
   const rule = LIMITS.find((r) => r.pattern.test(pathname));
-  let res = NextResponse.next();
+  const res = NextResponse.next();
 
   if (rule) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
