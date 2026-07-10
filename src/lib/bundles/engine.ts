@@ -24,6 +24,21 @@ export function computeBundlePrice(items: { price: number; quantity: number }[],
   return { fullPrice, bundlePrice, youSave: fullPrice - bundlePrice };
 }
 
+export async function getBundleBySlug(slug: string) {
+  return prisma.bundle.findUnique({
+    where: { slug, isActive: true },
+    include: {
+      items: {
+        include: {
+          product: {
+            include: { images: { orderBy: { sortOrder: "asc" }, take: 1 }, variants: { orderBy: { size: "asc" } } },
+          },
+        },
+      },
+    },
+  });
+}
+
 /** Bundles that include a given product — surfaced on its PDP as "complete the look". */
 export async function getBundlesContainingProduct(productId: string) {
   return prisma.bundle.findMany({

@@ -87,8 +87,8 @@ export async function evaluateDiscounts(
         break;
       }
       case "BUNDLE":
-        // Bundle discounts are computed by the bundles engine at the item level,
-        // not here — they change line pricing rather than applying a cart-level rule.
+        // Bundle discounts aren't DiscountRule rows — see bundleDiscounts below,
+        // which detects complete bundle sets directly from the Bundle table.
         break;
     }
   }
@@ -105,6 +105,36 @@ export async function evaluateDiscounts(
     freeShipping: c.freeShipping,
     code: c.rule.code ?? undefined,
   }));
+
+  // Bundle detection: if the cart contains every product a Bundle requires
+  // (in sufficient quantity), the bundle's discount% applies automatically
+  // to the sum of just those items — no special "buy as bundle" cart action
+  // needed, and the server always re-derives this from real cart contents
+  // rather than trusting a client-supplied bundle price.
+  const quantityByProduct = new Map<string, number>();
+  const priceByProduct = new Map<string, number>();
+  for (const line of lines) {
+    quantityByProduct.set(line.productId, (quantityByProduct.get(line.productId) ?? 0) + line.quantity);
+    priceByProduct.set(line.productId, line.unitPrice);
+  }
+
+  const activeBundles = await prisma.bundle.findMany({
+    where: { isActive: true },
+    include: { items: true },
+  });
+
+  for (const bundle of activeBundles) {
+    const requiredItems = bundle.items.filter((i) => !i.isOptional);
+    const satisfied = requiredItems.every((i) => (quantityByProduct.get(i.productId) ?? 0) >= i.quantity);
+    if (!requiredItems.length || !satisfied) continue;
+
+    const bundleValue = requiredItems.reduce(
+      (sum, i) => sum + (priceByProduct.get(i.productId) ?? 0) * i.quantity,
+      0,
+    );
+    const amount = Math.round(bundleValue * (Number(bundle.discountPercent) / 100));
+    discounts.push({ label: `${bundle.name} bundle discount`, amount, freeShipping: false });
+  }
 
   const totalDiscount = discounts.reduce((sum, d) => sum + d.amount, 0);
   const freeShipping =
