@@ -140,11 +140,19 @@ setup.
    same process as the main domain (Vercel → Settings → Domains → add
    `founder.aneem.in`, then add the CNAME it gives you at your registrar).
    No separate Vercel project needed; one deployment serves both hosts.
-2. **Env vars**:
+2. **Env vars** — set on the **Production** environment in Vercel Project
+   Settings → Environment Variables (and Preview too, if you test there):
    ```
    FOUNDER_PORTAL_HOST=founder.aneem.in
    FOUNDER_NEXTAUTH_SECRET=$(openssl rand -base64 32)   # different value from NEXTAUTH_SECRET
    ```
+   `FOUNDER_PORTAL_HOST` is what `src/middleware.ts` compares the incoming
+   request's hostname against to decide whether to serve `src/app/founder`.
+   If it's missing in an environment, that environment's requests to
+   `founder.aneem.in` silently fall through to the ordinary storefront
+   routing instead of the portal — there's no error, it just serves the
+   wrong app. After setting/changing it, redeploy (env var changes don't
+   apply to an already-built deployment).
 3. **Create your founder account** (no public registration route exists by
    design). From your local machine, pointed at the production
    `DATABASE_URL`:
