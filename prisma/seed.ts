@@ -1,38 +1,40 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { MOCK_QIKINK_PRODUCTS } from "../src/lib/qikink/mock-data";
+import { CATEGORY_MAP, PARENT_CATEGORIES } from "../src/lib/qikink/category-map";
 import { slugify } from "../src/lib/utils";
 
 const prisma = new PrismaClient();
 
-const CATEGORY_SLUG_MAP: Record<string, string> = {
-  "Men's Oversized T-Shirts": "mens-oversized-tshirts",
-  "Men's Gym T-Shirts": "mens-gym-tshirts",
-  "Men's Oversized Shirts": "mens-oversized-shirts",
-  "Women's Oversized T-Shirts": "womens-oversized-tshirts",
-  "Women's Gym T-Shirts": "womens-gym-tshirts",
-  Caps: "caps",
-  Bottles: "bottles",
-  Tumblers: "tumblers",
-  Hoodies: "hoodies",
-  Sweatshirts: "sweatshirts",
-  Jackets: "jackets",
-};
-
 async function main() {
   console.log("Seeding categories...");
-  const categoryOrder = Object.entries(CATEGORY_SLUG_MAP);
-  for (const [name, slug] of categoryOrder) {
-    await prisma.category.upsert({
-      where: { slug },
+  const parentIdByKey: Partial<Record<keyof typeof PARENT_CATEGORIES, string>> = {};
+  for (const [key, def] of Object.entries(PARENT_CATEGORIES) as [keyof typeof PARENT_CATEGORIES, { slug: string; name: string }][]) {
+    const parent = await prisma.category.upsert({
+      where: { slug: def.slug },
       update: {},
-      create: { name, slug, sortOrder: categoryOrder.findIndex(([n]) => n === name) },
+      create: { name: def.name, slug: def.slug, sortOrder: Object.keys(PARENT_CATEGORIES).indexOf(key) },
+    });
+    parentIdByKey[key] = parent.id;
+  }
+
+  const leafOrder = Object.entries(CATEGORY_MAP);
+  for (const [name, def] of leafOrder) {
+    await prisma.category.upsert({
+      where: { slug: def.slug },
+      update: { parentId: def.parent ? parentIdByKey[def.parent] : null },
+      create: {
+        name,
+        slug: def.slug,
+        parentId: def.parent ? parentIdByKey[def.parent] : null,
+        sortOrder: leafOrder.findIndex(([n]) => n === name),
+      },
     });
   }
 
   console.log("Seeding products from Qikink fixtures...");
   for (const qp of MOCK_QIKINK_PRODUCTS) {
-    const categorySlug = CATEGORY_SLUG_MAP[qp.category] ?? slugify(qp.category);
+    const categorySlug = CATEGORY_MAP[qp.category]?.slug ?? slugify(qp.category);
     const category = await prisma.category.findUniqueOrThrow({ where: { slug: categorySlug } });
     const slug = slugify(qp.name);
     const totalStock = qp.variants.reduce((sum, v) => sum + v.quantity, 0);

@@ -9,10 +9,12 @@ import { cn } from "@/lib/utils";
 interface NavCategory {
   name: string;
   slug: string;
+  children?: { name: string; slug: string }[];
 }
 
 export function Header({ categories }: { categories: NavCategory[] }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
   const totalQuantity = useCartStore((s) => s.totalQuantity());
   const openDrawer = useCartStore((s) => s.openDrawer);
 
@@ -29,13 +31,29 @@ export function Header({ categories }: { categories: NavCategory[] }) {
 
         <nav className="hidden items-center gap-7 lg:flex">
           {categories.map((c) => (
-            <Link
-              key={c.slug}
-              href={`/collections/${c.slug}`}
-              className="hover:text-accent-dark text-sm font-semibold uppercase tracking-wide transition-colors"
-            >
-              {c.name}
-            </Link>
+            <div key={c.slug} className="group relative">
+              <Link
+                href={`/collections/${c.slug}`}
+                className="hover:text-accent-dark text-sm font-semibold uppercase tracking-wide transition-colors"
+              >
+                {c.name}
+              </Link>
+              {c.children && c.children.length > 0 && (
+                <div className="invisible absolute left-1/2 top-full z-50 w-56 -translate-x-1/2 pt-3 opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100">
+                  <div className="border-ink-100 flex flex-col border bg-white py-2 shadow-lg">
+                    {c.children.map((sub) => (
+                      <Link
+                        key={sub.slug}
+                        href={`/collections/${sub.slug}`}
+                        className="hover:bg-ink-50 hover:text-accent-dark px-4 py-2 text-sm font-medium transition-colors"
+                      >
+                        {sub.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           ))}
           <Link
             href="/style-assistant"
@@ -80,14 +98,40 @@ export function Header({ categories }: { categories: NavCategory[] }) {
         </div>
         <nav className="flex flex-col p-4">
           {categories.map((c) => (
-            <Link
-              key={c.slug}
-              href={`/collections/${c.slug}`}
-              onClick={() => setMobileOpen(false)}
-              className="border-ink-100 border-b py-4 text-lg font-semibold uppercase"
-            >
-              {c.name}
-            </Link>
+            <div key={c.slug} className="border-ink-100 border-b">
+              <div className="flex items-center justify-between">
+                <Link
+                  href={`/collections/${c.slug}`}
+                  onClick={() => setMobileOpen(false)}
+                  className="flex-1 py-4 text-lg font-semibold uppercase"
+                >
+                  {c.name}
+                </Link>
+                {c.children && c.children.length > 0 && (
+                  <button
+                    aria-label={`Toggle ${c.name} sub-categories`}
+                    onClick={() => setMobileExpanded((prev) => (prev === c.slug ? null : c.slug))}
+                    className="p-4"
+                  >
+                    <span className={cn("block transition-transform", mobileExpanded === c.slug && "rotate-180")}>▾</span>
+                  </button>
+                )}
+              </div>
+              {c.children && c.children.length > 0 && mobileExpanded === c.slug && (
+                <div className="flex flex-col pb-3 pl-4">
+                  {c.children.map((sub) => (
+                    <Link
+                      key={sub.slug}
+                      href={`/collections/${sub.slug}`}
+                      onClick={() => setMobileOpen(false)}
+                      className="text-ink-600 py-2 text-sm font-medium uppercase"
+                    >
+                      {sub.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
           <Link
             href="/style-assistant"

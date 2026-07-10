@@ -77,18 +77,23 @@ export async function getCategoryWithProducts(
           ? { avgRating: "desc" as const }
           : { createdAt: "desc" as const };
 
-  const category = await prisma.category.findUnique({ where: { slug } });
+  const category = await prisma.category.findUnique({ where: { slug }, include: { children: true } });
   if (!category) return null;
+
+  // Parent sections (Men / Women / Accessories) hold no products directly —
+  // browsing one should show everything from its sub-categories.
+  const categoryIds = category.children.length > 0 ? category.children.map((c) => c.id) : [category.id];
+  const where = { isActive: true, categoryId: { in: categoryIds } };
 
   const [products, total] = await Promise.all([
     prisma.product.findMany({
-      where: { isActive: true, categoryId: category.id },
+      where,
       include: cardInclude,
       orderBy,
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.product.count({ where: { isActive: true, categoryId: category.id } }),
+    prisma.product.count({ where }),
   ]);
 
   return { category, products, total, page, pageSize };
