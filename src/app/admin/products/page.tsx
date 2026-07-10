@@ -43,7 +43,7 @@ export default async function AdminProductsPage() {
                     </div>
                     {p.title}
                   </td>
-                  <td className="p-3 text-ink-400">{p.category.name}</td>
+                  <td className="p-3 text-ink-400">{p.category?.name ?? "Uncategorized"}</td>
                   <td className="p-3">{formatINR(Number(p.basePrice))}</td>
                   <td className="p-3">{totalStock}</td>
                   <td className="p-3">
