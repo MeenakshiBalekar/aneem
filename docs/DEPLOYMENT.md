@@ -38,22 +38,28 @@ QIKINK_USE_MOCK=true
 Add Razorpay and Qikink credentials when ready (see below) — no code changes,
 just flip `QIKINK_USE_MOCK=false` and add the Qikink/Razorpay keys.
 
-## 4. Run migrations + seed against production DB
+## 4. Migrations run automatically on every deploy
 
-The repo already includes a tracked migration
-(`prisma/migrations/20260710000000_init/`) covering the full schema —
-apply it with `migrate deploy` (not `db push`, which is dev-only and
-doesn't track history). From your local machine (or a one-off Vercel
-deploy hook), pointed at the production `DATABASE_URL`:
+`npm run build` is `prisma generate && prisma migrate deploy && next build` —
+Vercel runs this on every deploy, so any migration folder committed to
+`prisma/migrations/` gets applied to whatever `DATABASE_URL` is configured
+for that environment before the app builds. `migrate deploy` (unlike
+`db push`) only ever applies pending migrations in order and no-ops if
+everything's already applied — it's safe to run on every single deploy,
+including ones with no schema changes.
+
+This means: any future schema change just needs `npx prisma migrate dev
+--name <description>` run locally against your dev DB (creates a new
+migration folder + applies it locally) and the folder committed — the next
+push to your production branch applies it automatically. No separate manual
+step, no forgetting to run it against prod.
+
+Seeding is still a manual, one-off step (never automatic — you don't want
+fixture data or a default admin password reappearing on every deploy):
 
 ```bash
-npx prisma migrate deploy   # applies prisma/migrations/ in order — safe to rerun, no-ops if already applied
-npm run db:seed             # optional — skip if you don't want fixture data in prod
+npm run db:seed   # optional — skip if you don't want fixture data in prod
 ```
-
-Any future schema change: run `npx prisma migrate dev --name <description>`
-locally against your dev DB (creates a new migration folder + applies it),
-commit the new folder, then `migrate deploy` against production the same way.
 
 For a real launch, don't run `db:seed` against production (it creates a
 fixture catalog and a default admin password) — instead run your first real
