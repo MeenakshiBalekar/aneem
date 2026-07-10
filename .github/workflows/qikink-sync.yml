@@ -1,0 +1,27 @@
+name: Qikink catalog sync
+
+# Vercel's Hobby plan only allows one cron trigger per day, which is too
+# infrequent to keep stock/pricing fresh. GitHub Actions' scheduler is free
+# regardless of hosting plan and just needs to hit the same
+# CRON_SECRET-protected route Vercel Cron used to call — no app code
+# changes, only the trigger moved.
+on:
+  schedule:
+    - cron: "0 * * * *" # hourly, matching the previous Vercel Cron schedule
+  workflow_dispatch: {} # lets you trigger a sync manually from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/sync-qikink
+        run: |
+          status=$(curl -s -o response.json -w "%{http_code}" \
+            -X GET "${{ secrets.SITE_URL }}/api/cron/sync-qikink" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP status: $status"
+          cat response.json
+          if [ "$status" -ge 300 ]; then
+            echo "Sync request failed"
+            exit 1
+          fi

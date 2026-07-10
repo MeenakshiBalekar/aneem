@@ -40,19 +40,33 @@ just flip `QIKINK_USE_MOCK=false` and add the Qikink/Razorpay keys.
 
 ## 4. Run migrations + seed against production DB
 
-From your local machine (or a one-off Vercel deploy hook), pointed at the
-production `DATABASE_URL`:
+The repo already includes a tracked migration
+(`prisma/migrations/20260710000000_init/`) covering the full schema —
+apply it with `migrate deploy` (not `db push`, which is dev-only and
+doesn't track history). From your local machine (or a one-off Vercel
+deploy hook), pointed at the production `DATABASE_URL`:
 
 ```bash
-npx prisma migrate deploy   # first time: npx prisma migrate dev --name init, then commit the migration
+npx prisma migrate deploy   # applies prisma/migrations/ in order — safe to rerun, no-ops if already applied
 npm run db:seed             # optional — skip if you don't want fixture data in prod
 ```
+
+Any future schema change: run `npx prisma migrate dev --name <description>`
+locally against your dev DB (creates a new migration folder + applies it),
+commit the new folder, then `migrate deploy` against production the same way.
 
 For a real launch, don't run `db:seed` against production (it creates a
 fixture catalog and a default admin password) — instead run your first real
 Qikink sync (`npm run db:seed` only for categories, or trigger `/api/admin/sync-qikink`
 from the admin UI once you're logged in as a real admin you created directly
 in the DB).
+
+> **Note:** if you're running these commands from an environment with
+> restricted network egress (e.g. a sandboxed CI runner), make sure it can
+> reach your database host directly on port 5432 — Neon (and most managed
+> Postgres providers) only accept the native Postgres wire protocol, not
+> plain HTTPS, so an HTTP-only proxy won't work here. Run these commands
+> from your own machine or a normal CI runner instead.
 
 ## 5. Deploy
 
@@ -79,11 +93,30 @@ vercel --prod
    subscribe to `payment.captured` and `payment.failed`, and set the webhook
    secret as `RAZORPAY_WEBHOOK_SECRET`.
 
-## 8. Cron jobs
+## 8. Scheduled Qikink sync (Hobby-plan compatible)
 
-`vercel.json` already defines an hourly Qikink sync. Vercel automatically
-authenticates cron requests with `Authorization: Bearer $CRON_SECRET` when
-`CRON_SECRET` is set as an environment variable — no extra config needed.
+Vercel's **Hobby plan caps cron triggers at once per day**, which is too
+infrequent to keep stock/pricing fresh — so this project doesn't use Vercel
+Cron at all. The sync endpoint (`/api/cron/sync-qikink`) still exists and is
+still protected by `CRON_SECRET`; it's just triggered from **GitHub
+Actions** instead, which schedules for free on any plan.
+
+1. In your GitHub repo → Settings → Secrets and variables → Actions, add:
+   - `SITE_URL` — e.g. `https://aneem.in`
+   - `CRON_SECRET` — the same value you set in Vercel's env vars
+2. That's it — `.github/workflows/qikink-sync.yml` runs hourly
+   (`0 * * * *`) and can also be triggered manually from the Actions tab
+   (`workflow_dispatch`).
+
+If you'd rather not depend on GitHub Actions, any free external scheduler
+works identically since the endpoint is just a plain authenticated GET —
+e.g. [cron-job.org](https://cron-job.org) (no code, add a job that GETs
+`https://aneem.in/api/cron/sync-qikink` with header
+`Authorization: Bearer <CRON_SECRET>`).
+
+For immediate, on-demand syncs you don't have to wait for any schedule —
+use the **"Sync Now"** button in `/admin/products` or the Founder Portal's
+`/founder/inventory` page.
 
 ## 9. Notifications (optional at launch)
 

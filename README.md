@@ -50,7 +50,8 @@ correctly 404 — that's the host-isolation working as intended.
 hand-entered in Aneem. `src/lib/qikink/sync.ts` upserts Qikink's product/variant/
 stock data into our own Postgres tables so storefront reads stay fast (no
 per-request API calls to Qikink), while `src/app/api/webhooks/qikink/route.ts`
-and the hourly cron (`src/app/api/cron/sync-qikink/route.ts`) keep it fresh.
+and an hourly scheduled sync (`src/app/api/cron/sync-qikink/route.ts`, triggered by
+GitHub Actions rather than Vercel Cron — see below) keep it fresh.
 New Qikink categories get auto-created (`ensureCategory` in `sync.ts`), so a
 brand-new product type shows up without a code change.
 
@@ -154,8 +155,9 @@ sending when credentials are unset — safe to leave blank until you're ready.
 | `npm run dev` | Start dev server |
 | `npm run build` / `npm start` | Production build/serve |
 | `npm run lint` | ESLint |
-| `npm run db:push` | Push Prisma schema to DB (no migration history — good for dev) |
-| `npm run db:migrate` | Create a tracked migration (use for production) |
+| `npm run db:push` | Push schema straight to DB, no migration history (quick local iteration) |
+| `npm run db:migrate` | Create + apply a new tracked migration against your dev DB |
+| `npm run db:migrate:deploy` | Apply existing tracked migrations to a DB (use this for production) |
 | `npm run db:seed` | Load fixture catalog/bundles/discounts/admin user |
 | `npm run db:seed-founder` | Create/reset the Founder Portal login (`FOUNDER_EMAIL`/`FOUNDER_PASSWORD` env vars) |
 | `npm run db:studio` | Prisma Studio (visual DB browser) |
@@ -163,7 +165,8 @@ sending when credentials are unset — safe to leave blank until you're ready.
 ## Deployment
 
 See `docs/DEPLOYMENT.md` for the full Vercel + Postgres walkthrough,
-including cron setup (`vercel.json`) and webhook configuration.
+including scheduled-sync setup (GitHub Actions — works on Vercel's Hobby
+plan, which caps native cron at once/day) and webhook configuration.
 
 ## Security
 
