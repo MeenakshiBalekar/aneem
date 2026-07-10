@@ -23,7 +23,21 @@ const LIMITS: { pattern: RegExp; limit: number }[] = [
 // Preview if you test there) — if it's unset in an environment, onFounderHost
 // is never true there and the founder subdomain silently falls through to
 // the storefront instead of 404ing or rewriting.
-const FOUNDER_HOST = process.env.FOUNDER_PORTAL_HOST ?? "founder.localhost:3000";
+//
+// The value must be a bare hostname (e.g. "founder.aneem.in") — never a full
+// URL. The incoming Host/x-forwarded-host header is always bare (browsers
+// and proxies never send a scheme in it), so a value like
+// "https://founder.aneem.in" can never match and silently falls through to
+// the storefront with no error, which is a mistake easy enough to make once
+// that we normalize it away here rather than just document it.
+function normalizeHost(value: string): string {
+  return value
+    .trim()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "") // strip a leading scheme, if present
+    .replace(/\/.*$/, ""); // strip any path/trailing slash, if present
+}
+
+const FOUNDER_HOST = normalizeHost(process.env.FOUNDER_PORTAL_HOST ?? "founder.localhost:3000");
 
 // Every page and redirect in the app already hardcodes the `/founder/...`
 // prefix (FounderSidebar links, `redirect("/founder/login")`, the NextAuth
