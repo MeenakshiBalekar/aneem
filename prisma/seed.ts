@@ -232,6 +232,9 @@ async function main() {
     },
   });
 
+  console.log("Seeding cost settings...");
+  await prisma.costSettings.upsert({ where: { id: "default" }, update: {}, create: { id: "default" } });
+
   console.log("Seeding admin user...");
   const adminPassword = await bcrypt.hash("Admin@12345", 12);
   await prisma.user.upsert({

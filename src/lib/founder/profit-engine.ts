@@ -1,4 +1,5 @@
 import "server-only";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { Order, OrderItem, OrderStatus, ProductVariant, Product } from "@prisma/client";
 
@@ -20,13 +21,26 @@ export interface OrderProfitBreakdown {
 
 type OrderWithItems = Order & { items: (OrderItem & { variant: ProductVariant; product: Product })[] };
 
-/** Singleton cost-settings row — created with sane apparel-business defaults on first read. */
+/** Singleton cost-settings row — created with sane apparel-business defaults
+ * on first read. Called concurrently from several places (dashboard/profit/
+ * copilot all fire off parallel Promise.all batches that each need it), so
+ * a plain upsert isn't safe: if the row doesn't exist yet, two concurrent
+ * upserts can both attempt the create and one loses with a unique-constraint
+ * error instead of falling through to update. Catch that race and just read
+ * the row the other caller created. */
 export async function getCostSettings() {
-  return prisma.costSettings.upsert({
-    where: { id: "default" },
-    update: {},
-    create: { id: "default" },
-  });
+  try {
+    return await prisma.costSettings.upsert({
+      where: { id: "default" },
+      update: {},
+      create: { id: "default" },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return prisma.costSettings.findUniqueOrThrow({ where: { id: "default" } });
+    }
+    throw err;
+  }
 }
 
 async function getProductCostMap() {
