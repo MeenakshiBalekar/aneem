@@ -228,3 +228,73 @@ export async function getProductProfitBreakdown(start: Date, end: Date) {
     .map(([productId, v]) => ({ productId, ...v, margin: v.revenue > 0 ? (v.profit / v.revenue) * 100 : 0 }))
     .sort((a, b) => b.profit - a.profit);
 }
+
+/** Top customers by lifetime profit contribution (not just revenue) — uses
+ * the same per-order profit computation as everything else, over each
+ * customer's full order history rather than one period. */
+export async function getTopCustomersByProfit(limit = 20) {
+  const [orders, costSettings, productCostMap] = await Promise.all([
+    prisma.order.findMany({
+      where: { status: { in: REVENUE_STATUSES } },
+      include: { items: { include: { variant: true, product: true } }, user: { select: { name: true, email: true } } },
+    }),
+    getCostSettings(),
+    getProductCostMap(),
+  ]);
+
+  const byCustomer = new Map<string, { name: string; email: string; revenue: number; profit: number; orders: number }>();
+  for (const order of orders) {
+    const breakdown = computeOrderProfit(order, costSettings, productCostMap);
+    const entry = byCustomer.get(order.userId) ?? {
+      name: order.user.name ?? order.user.email,
+      email: order.user.email,
+      revenue: 0,
+      profit: 0,
+      orders: 0,
+    };
+    entry.revenue += breakdown.revenue;
+    entry.profit += breakdown.profit;
+    entry.orders += 1;
+    byCustomer.set(order.userId, entry);
+  }
+
+  return Array.from(byCustomer.entries())
+    .map(([userId, v]) => ({ userId, ...v }))
+    .sort((a, b) => b.profit - a.profit)
+    .slice(0, limit);
+}
+
+export async function getBundleProfitBreakdown(start: Date, end: Date) {
+  const bundles = await prisma.bundle.findMany({
+    where: { isActive: true },
+    include: { items: { include: { product: { include: { costConfig: true } } } } },
+  });
+  const costSettings = await getCostSettings();
+
+  const orders = await getOrdersInRange(start, end);
+  const orderProductIds = orders.map((o) => new Set(o.items.map((i) => i.productId)));
+
+  return bundles.map((bundle) => {
+    const requiredIds = bundle.items.map((i) => i.productId);
+    const matchingOrders = orders.filter((_, idx) => requiredIds.every((id) => orderProductIds[idx].has(id)));
+
+    const revenue = matchingOrders.reduce((sum, o) => sum + Number(o.total), 0);
+    const cost = bundle.items.reduce(
+      (sum, i) => sum + Number(i.product.costConfig?.productCost ?? 0) + Number(i.product.costConfig?.printingCost ?? 0),
+      0,
+    );
+    const overheadPerOrder = Number(costSettings.defaultShippingCost) + Number(costSettings.defaultPackagingCost);
+    const profit = revenue - matchingOrders.length * (cost + overheadPerOrder);
+    const returnCount = matchingOrders.filter((o) => ["RETURNED", "RTO"].includes(o.status)).length;
+
+    return {
+      bundleId: bundle.id,
+      name: bundle.name,
+      orders: matchingOrders.length,
+      revenue,
+      profit,
+      margin: revenue > 0 ? (profit / revenue) * 100 : 0,
+      returnRate: matchingOrders.length > 0 ? (returnCount / matchingOrders.length) * 100 : 0,
+    };
+  });
+}
