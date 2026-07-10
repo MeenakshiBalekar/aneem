@@ -148,11 +148,15 @@ setup.
    ```
    `FOUNDER_PORTAL_HOST` is what `src/middleware.ts` compares the incoming
    request's hostname against to decide whether to serve `src/app/founder`.
-   If it's missing in an environment, that environment's requests to
-   `founder.aneem.in` silently fall through to the ordinary storefront
-   routing instead of the portal — there's no error, it just serves the
-   wrong app. After setting/changing it, redeploy (env var changes don't
-   apply to an already-built deployment).
+   **It must be the bare hostname only — `founder.aneem.in`, not
+   `https://founder.aneem.in`.** The middleware normalizes away an
+   accidental scheme/trailing-slash defensively, but there's no reason to
+   rely on that. If it's missing (or was pointed at the wrong value before
+   that normalization existed) in an environment, that environment's
+   requests to `founder.aneem.in` silently fall through to the ordinary
+   storefront routing instead of the portal — there's no error, it just
+   serves the wrong app. After setting/changing it, redeploy (env var
+   changes don't apply to an already-built deployment).
 3. **Create your founder account** (no public registration route exists by
    design). From your local machine, pointed at the production
    `DATABASE_URL`:
