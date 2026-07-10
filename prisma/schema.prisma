@@ -487,6 +487,7 @@ enum SyncJobType {
   INVENTORY_SYNC
   ORDER_PUSH
   FULFILLMENT_PULL
+  CATALOG_IMPORT
 }
 
 enum SyncJobStatus {
@@ -572,12 +573,18 @@ model FounderAuditLog {
 // rather than ProductVariant — Qikink's per-SKU cost usually only varies by
 // product, not size; extend to ProductVariant later if that stops holding.
 model ProductCost {
-  id           String   @id @default(cuid())
-  productId    String   @unique
-  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productCost  Decimal  @default(0) @db.Decimal(10, 2)
-  printingCost Decimal  @default(0) @db.Decimal(10, 2)
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(cuid())
+  productId      String   @unique
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productCost    Decimal  @default(0) @db.Decimal(10, 2)
+  printingCost   Decimal  @default(0) @db.Decimal(10, 2)
+  // Per-product GST rate (apparel is commonly 5% vs 12%/18% depending on
+  // price slab/category) — set by catalog import when the source data has
+  // a per-SKU tax rate. Null means "use CostSettings.gstPercent" (the old
+  // store-wide flat rate), so existing products without this set keep
+  // behaving exactly as before.
+  taxRatePercent Decimal? @db.Decimal(5, 2)
+  updatedAt      DateTime @updatedAt
 }
 
 // Singleton-style config row (one record, id = "default") for costs that

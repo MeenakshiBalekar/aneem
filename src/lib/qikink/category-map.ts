@@ -7,6 +7,7 @@ export const PARENT_CATEGORIES = {
   men: { slug: "men", name: "Men" },
   women: { slug: "women", name: "Women" },
   accessories: { slug: "accessories", name: "Accessories" },
+  kids: { slug: "kids", name: "Kids" },
 } as const;
 
 export type ParentCategoryKey = keyof typeof PARENT_CATEGORIES;

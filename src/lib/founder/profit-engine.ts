@@ -52,7 +52,7 @@ async function getProductCostMap() {
 export function computeOrderProfit(
   order: OrderWithItems,
   costSettings: Awaited<ReturnType<typeof getCostSettings>>,
-  productCostMap: Map<string, { productCost: unknown; printingCost: unknown }>,
+  productCostMap: Map<string, { productCost: unknown; printingCost: unknown; taxRatePercent?: unknown }>,
 ): OrderProfitBreakdown {
   const revenue = Number(order.total);
   const subtotal = Number(order.subtotal);
@@ -60,16 +60,28 @@ export function computeOrderProfit(
 
   let productCost = 0;
   let printingCost = 0;
+  let taxableRevenue = 0;
+  let weightedTaxSum = 0;
   for (const item of order.items) {
     const cost = productCostMap.get(item.productId);
     productCost += Number(cost?.productCost ?? 0) * item.quantity;
     printingCost += Number(cost?.printingCost ?? 0) * item.quantity;
+
+    // Per-product GST rate (5% vs 12%/18% slabs) when the catalog import set
+    // one; falls back to the store-wide flat rate otherwise. Blended as a
+    // revenue-weighted average so a mixed-rate order still nets out to the
+    // same total GST a line-item breakdown would produce.
+    const itemRevenue = Number(item.unitPrice) * item.quantity;
+    const rate = cost?.taxRatePercent != null ? Number(cost.taxRatePercent) : Number(costSettings.gstPercent);
+    taxableRevenue += itemRevenue;
+    weightedTaxSum += itemRevenue * rate;
   }
+  const effectiveGstPercent = taxableRevenue > 0 ? weightedTaxSum / taxableRevenue : Number(costSettings.gstPercent);
 
   const shippingCost = Number(costSettings.defaultShippingCost);
   const packagingCost = Number(costSettings.defaultPackagingCost);
   const gatewayFee = order.paymentMethod === "RAZORPAY" ? revenue * (Number(costSettings.gatewayFeePercent) / 100) : 0;
-  const gst = Math.max(0, subtotal - discount) * (Number(costSettings.gstPercent) / 100);
+  const gst = Math.max(0, subtotal - discount) * (effectiveGstPercent / 100);
   const refund = Number(order.refundAmount);
   const rtoLoss = Number(order.rtoLossAmount);
 
