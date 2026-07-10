@@ -4,7 +4,7 @@ import { isFreeShippingEligible } from "@/lib/utils";
 
 export interface CartLineForDiscount {
   productId: string;
-  categoryId: string;
+  categoryId: string | null;
   quantity: number;
   unitPrice: number;
 }

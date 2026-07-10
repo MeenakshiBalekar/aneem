@@ -58,6 +58,7 @@ export async function getTopCategories(limit = 6) {
 
   const byCategory = new Map<string, { name: string; revenue: number; units: number }>();
   for (const item of items) {
+    if (!item.product.category) continue; // uncategorized products don't attribute to any section
     const key = item.product.category.id;
     const entry = byCategory.get(key) ?? { name: item.product.category.name, revenue: 0, units: 0 };
     entry.revenue += Number(item.totalPrice);

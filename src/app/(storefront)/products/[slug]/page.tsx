@@ -81,7 +81,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         <ProductGallery images={product.images} title={product.title} />
 
         <div>
-          <p className="text-ink-400 text-xs font-semibold uppercase tracking-wide">{product.category.name}</p>
+          {product.category && (
+            <p className="text-ink-400 text-xs font-semibold uppercase tracking-wide">{product.category.name}</p>
+          )}
           <h1 className="mt-1 text-2xl font-black uppercase sm:text-3xl">{product.title}</h1>
           {product.reviewCount > 0 && (
             <div className="mt-2">

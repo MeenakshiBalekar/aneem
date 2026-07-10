@@ -53,8 +53,12 @@ model Product {
   description      String                   @db.Text
   fabricDetails    String?                  @db.Text
   washCare         String?                  @db.Text
-  categoryId       String
-  category         Category                 @relation(fields: [categoryId], references: [id])
+  // Nullable: Qikink sync creates products with no category and isActive:
+  // false ("hidden until tagged") — the founder assigns a category (and any
+  // extra tags) from the Founder Portal before a synced product ever shows
+  // on the storefront. Re-syncs never touch this once set.
+  categoryId       String?
+  category         Category?                @relation(fields: [categoryId], references: [id])
   tags             String[]                 @default([])
   images           ProductImage[]
   videoUrl         String?

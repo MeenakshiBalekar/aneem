@@ -15,7 +15,7 @@ export async function getProductContext(productId: string) {
   const lines = [
     `Brand: Aneem — premium oversized streetwear, India.`,
     `Product: ${product.title}`,
-    `Category: ${product.category.name}`,
+    product.category ? `Category: ${product.category.name}` : "",
     `Price: ₹${product.basePrice}${product.compareAtPrice ? ` (MRP ₹${product.compareAtPrice})` : ""}`,
     `Description: ${product.description}`,
     product.fabricDetails ? `Fabric: ${product.fabricDetails}` : "",

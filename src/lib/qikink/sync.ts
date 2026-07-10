@@ -3,40 +3,28 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
 import { qikinkClient } from "./client";
-import { CATEGORY_MAP, PARENT_CATEGORIES } from "./category-map";
 import type { QikinkFulfillmentUpdate, QikinkProduct } from "./types";
 
-/** Upserts (and nests, per CATEGORY_MAP) the Category row for one Qikink
- * category name. A category not in CATEGORY_MAP still gets created via
- * slugify() so a brand-new product type in Qikink is never silently
- * dropped — it just starts out as its own top-level section. */
-async function ensureCategory(qikinkCategoryName: string) {
-  const def = CATEGORY_MAP[qikinkCategoryName];
-  const slug = def?.slug ?? slugify(qikinkCategoryName);
-
-  let parentId: string | null = null;
-  if (def?.parent) {
-    const parentDef = PARENT_CATEGORIES[def.parent];
-    const parent = await prisma.category.upsert({
-      where: { slug: parentDef.slug },
-      update: {},
-      create: { name: parentDef.name, slug: parentDef.slug },
-    });
-    parentId = parent.id;
-  }
-
-  return prisma.category.upsert({
-    where: { slug },
-    update: { parentId },
-    create: { name: qikinkCategoryName, slug, parentId },
-  });
-}
-
-/** Upserts one Qikink product + its variants + images into our catalog. */
+/** Upserts one Qikink product + its variants + images into our catalog.
+ *
+ * Category and tags are founder-owned, not sync-owned: Qikink's own category
+ * field doesn't reliably map to our Men/Women/Accessories sections (real
+ * product names/categories from Qikink don't carry gender info), so the
+ * sync never sets categoryId. A brand-new product is created uncategorized
+ * and inactive ("hidden until tagged") — the founder assigns a category
+ * from /founder/products, which is what actually makes it visible. Re-syncs
+ * only ever touch catalog/pricing/stock fields, never category or tags, so
+ * a founder's categorization work is never wiped out by the next sync. */
 export async function upsertProductFromQikink(qp: QikinkProduct) {
-  const category = await ensureCategory(qp.category);
   const slug = slugify(qp.name);
   const primaryStock = qp.variants.reduce((sum, v) => sum + v.quantity, 0);
+  const inStockAndListed = qp.status === "active" && primaryStock > 0;
+
+  const existing = await prisma.product.findUnique({
+    where: { qikinkProductId: qp.product_id },
+    select: { categoryId: true },
+  });
+  const isActive = inStockAndListed && existing?.categoryId != null;
 
   const product = await prisma.product.upsert({
     where: { qikinkProductId: qp.product_id },
@@ -45,10 +33,9 @@ export async function upsertProductFromQikink(qp: QikinkProduct) {
       description: qp.description,
       fabricDetails: qp.fabric,
       washCare: qp.care_instructions,
-      categoryId: category.id,
       basePrice: qp.base_price,
       compareAtPrice: qp.mrp,
-      isActive: qp.status === "active" && primaryStock > 0,
+      isActive,
       syncStatus: "SYNCED",
       lastSyncedAt: new Date(),
     },
@@ -59,10 +46,9 @@ export async function upsertProductFromQikink(qp: QikinkProduct) {
       description: qp.description,
       fabricDetails: qp.fabric,
       washCare: qp.care_instructions,
-      categoryId: category.id,
       basePrice: qp.base_price,
       compareAtPrice: qp.mrp,
-      isActive: qp.status === "active" && primaryStock > 0,
+      isActive: false, // hidden until the founder assigns a category
       syncStatus: "SYNCED",
       lastSyncedAt: new Date(),
     },
