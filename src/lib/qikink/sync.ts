@@ -180,10 +180,12 @@ export async function applyInventoryUpdate(updates: { sku: string; quantity: num
 
 const STATUS_MAP: Record<QikinkFulfillmentUpdate["status"], string> = {
   in_production: "IN_PRODUCTION",
+  printed: "PRINTED",
   shipped: "SHIPPED",
   delivered: "DELIVERED",
   cancelled: "CANCELLED",
-  rto: "CANCELLED",
+  returned: "RETURNED",
+  rto: "RTO",
 };
 
 /** Applies a fulfillment/tracking update pushed via webhook to the matching order. */

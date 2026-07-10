@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { runFullProductSync } from "@/lib/qikink/sync";
 
-// Vercel Cron (see vercel.json) hits this on a schedule to keep the catalog
-// fresh even if webhooks are missed. Also callable on-demand from the admin
-// "Sync now" button.
+// Triggered hourly by a GitHub Actions workflow (see
+// .github/workflows/qikink-sync.yml) rather than Vercel Cron — the Hobby
+// plan only allows daily cron triggers, too infrequent to keep stock/pricing
+// fresh. Keeps the catalog fresh even if webhooks are missed. Also callable
+// on-demand from the admin/Founder Portal "Sync now" buttons.
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {

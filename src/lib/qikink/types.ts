@@ -70,7 +70,7 @@ export interface QikinkCreateOrderResponse {
 export interface QikinkFulfillmentUpdate {
   order_id: string;
   order_number: string;
-  status: "in_production" | "shipped" | "delivered" | "cancelled" | "rto";
+  status: "in_production" | "printed" | "shipped" | "delivered" | "cancelled" | "returned" | "rto";
   tracking_number?: string;
   tracking_url?: string;
   courier_name?: string;

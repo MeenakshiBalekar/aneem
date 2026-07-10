@@ -46,40 +46,41 @@ enum SyncStatus {
 // Qikink is the system of record — everything here is mirrored from a
 // Qikink product via `qikinkProductId` and kept fresh by the sync service.
 model Product {
-  id               String        @id @default(cuid())
-  qikinkProductId  String        @unique
-  title            String
-  slug             String        @unique
-  description      String        @db.Text
-  fabricDetails    String?       @db.Text
-  washCare         String?       @db.Text
-  categoryId       String
-  category         Category      @relation(fields: [categoryId], references: [id])
-  tags             String[]      @default([])
-  images           ProductImage[]
-  videoUrl         String?
-  variants         ProductVariant[]
-  basePrice        Decimal       @db.Decimal(10, 2)
-  compareAtPrice   Decimal?      @db.Decimal(10, 2)
-  isActive         Boolean       @default(true)
-  isBestSeller     Boolean       @default(false)
-  isNewArrival     Boolean       @default(false)
-  isTrending       Boolean       @default(false)
-  avgRating        Float         @default(0)
-  reviewCount      Int           @default(0)
-  syncStatus       SyncStatus    @default(PENDING)
-  lastSyncedAt     DateTime?
-  seoTitle         String?
-  seoDescription   String?
-  reviews          Review[]
-  orderItems       OrderItem[]
-  cartItems        CartItem[]
-  wishlistItems    WishlistItem[]
-  bundleItems      BundleItem[]
-  crossSellFrom    ProductRelation[] @relation("SourceProduct")
-  crossSellTo      ProductRelation[] @relation("RelatedProduct")
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id              String            @id @default(cuid())
+  qikinkProductId String            @unique
+  title           String
+  slug            String            @unique
+  description     String            @db.Text
+  fabricDetails   String?           @db.Text
+  washCare        String?           @db.Text
+  categoryId      String
+  category        Category          @relation(fields: [categoryId], references: [id])
+  tags            String[]          @default([])
+  images          ProductImage[]
+  videoUrl        String?
+  variants        ProductVariant[]
+  basePrice       Decimal           @db.Decimal(10, 2)
+  compareAtPrice  Decimal?          @db.Decimal(10, 2)
+  isActive        Boolean           @default(true)
+  isBestSeller    Boolean           @default(false)
+  isNewArrival    Boolean           @default(false)
+  isTrending      Boolean           @default(false)
+  avgRating       Float             @default(0)
+  reviewCount     Int               @default(0)
+  syncStatus      SyncStatus        @default(PENDING)
+  lastSyncedAt    DateTime?
+  seoTitle        String?
+  seoDescription  String?
+  reviews         Review[]
+  orderItems      OrderItem[]
+  cartItems       CartItem[]
+  wishlistItems   WishlistItem[]
+  bundleItems     BundleItem[]
+  crossSellFrom   ProductRelation[] @relation("SourceProduct")
+  crossSellTo     ProductRelation[] @relation("RelatedProduct")
+  costConfig      ProductCost?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   @@index([categoryId])
   @@index([isBestSeller])
@@ -88,12 +89,12 @@ model Product {
 }
 
 model ProductImage {
-  id        String  @id @default(cuid())
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  url       String
-  altText   String?
-  sortOrder Int     @default(0)
+  id          String  @id @default(cuid())
+  productId   String
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url         String
+  altText     String?
+  sortOrder   Int     @default(0)
   isLifestyle Boolean @default(false)
 
   @@index([productId])
@@ -101,22 +102,22 @@ model ProductImage {
 
 // Size x Color combination — this is what Qikink tracks stock/price against.
 model ProductVariant {
-  id                String      @id @default(cuid())
-  qikinkVariantId   String      @unique
-  productId         String
-  product           Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  size              String
-  color             String?
-  sku               String      @unique
-  price             Decimal     @db.Decimal(10, 2)
-  compareAtPrice    Decimal?    @db.Decimal(10, 2)
-  stock             Int         @default(0)
-  isOutOfStock      Boolean     @default(false)
-  weightGrams       Int?
-  orderItems        OrderItem[]
-  cartItems         CartItem[]
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  id              String      @id @default(cuid())
+  qikinkVariantId String      @unique
+  productId       String
+  product         Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size            String
+  color           String?
+  sku             String      @unique
+  price           Decimal     @db.Decimal(10, 2)
+  compareAtPrice  Decimal?    @db.Decimal(10, 2)
+  stock           Int         @default(0)
+  isOutOfStock    Boolean     @default(false)
+  weightGrams     Int?
+  orderItems      OrderItem[]
+  cartItems       CartItem[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@unique([productId, size, color])
   @@index([productId])
@@ -130,13 +131,13 @@ enum RelationType {
 }
 
 model ProductRelation {
-  id           String       @id @default(cuid())
-  sourceId     String
-  source       Product      @relation("SourceProduct", fields: [sourceId], references: [id], onDelete: Cascade)
-  relatedId    String
-  related      Product      @relation("RelatedProduct", fields: [relatedId], references: [id], onDelete: Cascade)
-  type         RelationType
-  sortOrder    Int          @default(0)
+  id        String       @id @default(cuid())
+  sourceId  String
+  source    Product      @relation("SourceProduct", fields: [sourceId], references: [id], onDelete: Cascade)
+  relatedId String
+  related   Product      @relation("RelatedProduct", fields: [relatedId], references: [id], onDelete: Cascade)
+  type      RelationType
+  sortOrder Int          @default(0)
 
   @@unique([sourceId, relatedId, type])
   @@index([sourceId])
@@ -162,12 +163,12 @@ model Bundle {
 }
 
 model BundleItem {
-  id        String  @id @default(cuid())
-  bundleId  String
-  bundle    Bundle  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  quantity  Int     @default(1)
+  id         String  @id @default(cuid())
+  bundleId   String
+  bundle     Bundle  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product @relation(fields: [productId], references: [id])
+  quantity   Int     @default(1)
   isOptional Boolean @default(false)
 
   @@index([bundleId])
@@ -178,10 +179,10 @@ model BundleItem {
 // ---------------------------------------------------------------------------
 
 enum DiscountType {
-  QUANTITY_BREAK      // e.g. buy 2 -> 10%, buy 3 -> 15%
-  BUNDLE               // tied to a Bundle
+  QUANTITY_BREAK // e.g. buy 2 -> 10%, buy 3 -> 15%
+  BUNDLE // tied to a Bundle
   FREE_SHIPPING_THRESHOLD
-  COUPON                // code-based, customer-entered
+  COUPON // code-based, customer-entered
   LIMITED_TIME
 }
 
@@ -192,23 +193,23 @@ enum DiscountValueType {
 }
 
 model DiscountRule {
-  id            String            @id @default(cuid())
-  name          String
-  type          DiscountType
-  valueType     DiscountValueType
-  value         Decimal           @db.Decimal(10, 2)
-  code          String?           @unique // for COUPON type
-  minQuantity   Int?              // for QUANTITY_BREAK
-  minAmount     Decimal?          @db.Decimal(10, 2) // for FREE_SHIPPING_THRESHOLD / min-cart coupons
+  id                  String            @id @default(cuid())
+  name                String
+  type                DiscountType
+  valueType           DiscountValueType
+  value               Decimal           @db.Decimal(10, 2)
+  code                String?           @unique // for COUPON type
+  minQuantity         Int? // for QUANTITY_BREAK
+  minAmount           Decimal?          @db.Decimal(10, 2) // for FREE_SHIPPING_THRESHOLD / min-cart coupons
   appliesToCategoryId String?
-  startsAt      DateTime?
-  endsAt        DateTime?
-  isActive      Boolean           @default(true)
-  usageLimit    Int?
-  usageCount    Int               @default(0)
-  stackable     Boolean           @default(false)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  startsAt            DateTime?
+  endsAt              DateTime?
+  isActive            Boolean           @default(true)
+  usageLimit          Int?
+  usageCount          Int               @default(0)
+  stackable           Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -221,26 +222,26 @@ enum Role {
 }
 
 model User {
-  id             String        @id @default(cuid())
-  name           String?
-  email          String        @unique
-  emailVerified  DateTime?
-  phone          String?
-  passwordHash   String?
-  image          String?
-  role           Role          @default(CUSTOMER)
-  loyaltyPoints  Int           @default(0)
-  referralCode   String?       @unique
-  referredById   String?
-  addresses      Address[]
-  orders         Order[]
-  cart           Cart?
-  wishlist       WishlistItem[]
-  reviews        Review[]
-  accounts       Account[]
-  sessions       Session[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id            String         @id @default(cuid())
+  name          String?
+  email         String         @unique
+  emailVerified DateTime?
+  phone         String?
+  passwordHash  String?
+  image         String?
+  role          Role           @default(CUSTOMER)
+  loyaltyPoints Int            @default(0)
+  referralCode  String?        @unique
+  referredById  String?
+  addresses     Address[]
+  orders        Order[]
+  cart          Cart?
+  wishlist      WishlistItem[]
+  reviews       Review[]
+  accounts      Account[]
+  sessions      Session[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 // NextAuth models
@@ -279,20 +280,20 @@ model VerificationToken {
 }
 
 model Address {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName   String
-  phone      String
-  line1      String
-  line2      String?
-  city       String
-  state      String
-  pincode    String
-  country    String   @default("India")
-  isDefault  Boolean  @default(false)
-  orders     Order[]
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String
+  phone     String
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  pincode   String
+  country   String   @default("India")
+  isDefault Boolean  @default(false)
+  orders    Order[]
+  createdAt DateTime @default(now())
 
   @@index([userId])
 }
@@ -309,17 +310,17 @@ model WishlistItem {
 }
 
 model Review {
-  id         String   @id @default(cuid())
-  productId  String
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  rating     Int
-  title      String?
-  body       String?  @db.Text
-  imageUrls  String[] @default([])
-  isVerifiedPurchase Boolean @default(false)
-  createdAt  DateTime @default(now())
+  id                 String   @id @default(cuid())
+  productId          String
+  product            Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User     @relation(fields: [userId], references: [id])
+  rating             Int
+  title              String?
+  body               String?  @db.Text
+  imageUrls          String[] @default([])
+  isVerifiedPurchase Boolean  @default(false)
+  createdAt          DateTime @default(now())
 
   @@index([productId])
 }
@@ -329,16 +330,16 @@ model Review {
 // ---------------------------------------------------------------------------
 
 model Cart {
-  id        String     @id @default(cuid())
-  userId    String?    @unique
-  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sessionId String?    @unique // guest cart, keyed by cookie
-  items     CartItem[]
+  id         String     @id @default(cuid())
+  userId     String?    @unique
+  user       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId  String?    @unique // guest cart, keyed by cookie
+  items      CartItem[]
   couponCode String?
-  giftWrap  Boolean    @default(false)
-  giftNote  String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  giftWrap   Boolean    @default(false)
+  giftNote   String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 }
 
 model CartItem {
@@ -367,12 +368,28 @@ enum OrderStatus {
   COD_CONFIRMED
   SENT_TO_QIKINK
   IN_PRODUCTION
+  PRINTED
   SHIPPED
   DELIVERED
   CANCELLED
   PAYMENT_FAILED
   RETURN_REQUESTED
+  RETURNED
+  RTO
   REFUNDED
+}
+
+// Founder's personal call-confirmation workflow status — separate from
+// OrderStatus (fulfillment lifecycle) since a customer can be "Confirmed"
+// on the phone while the order is still PENDING_PAYMENT in Qikink terms.
+enum OrderContactStatus {
+  PENDING
+  CONTACTED
+  CONFIRMED
+  CALLBACK_REQUESTED
+  NO_RESPONSE
+  WRONG_NUMBER
+  CANCELLED_BY_CUSTOMER
 }
 
 enum PaymentMethod {
@@ -381,51 +398,74 @@ enum PaymentMethod {
 }
 
 model Order {
-  id                String        @id @default(cuid())
-  orderNumber       String        @unique // human-friendly, e.g. ANEEM-100234
-  userId            String
-  user              User          @relation(fields: [userId], references: [id])
-  addressId         String
-  address           Address       @relation(fields: [addressId], references: [id])
-  items             OrderItem[]
-  subtotal          Decimal       @db.Decimal(10, 2)
-  discountAmount    Decimal       @db.Decimal(10, 2) @default(0)
-  shippingAmount    Decimal       @db.Decimal(10, 2) @default(0)
-  codFee            Decimal       @db.Decimal(10, 2) @default(0)
-  total             Decimal       @db.Decimal(10, 2)
+  id                  String             @id @default(cuid())
+  orderNumber         String             @unique // human-friendly, e.g. ANEEM-100234
+  userId              String
+  user                User               @relation(fields: [userId], references: [id])
+  addressId           String
+  address             Address            @relation(fields: [addressId], references: [id])
+  items               OrderItem[]
+  subtotal            Decimal            @db.Decimal(10, 2)
+  discountAmount      Decimal            @default(0) @db.Decimal(10, 2)
+  shippingAmount      Decimal            @default(0) @db.Decimal(10, 2)
+  codFee              Decimal            @default(0) @db.Decimal(10, 2)
+  total               Decimal            @db.Decimal(10, 2)
   appliedDiscountCode String?
-  status            OrderStatus   @default(PENDING_PAYMENT)
-  paymentMethod     PaymentMethod
-  razorpayOrderId   String?
-  razorpayPaymentId String?
-  razorpaySignature String?
-  qikinkOrderId     String?
-  trackingNumber    String?
-  trackingUrl       String?
-  courierName       String?
-  invoiceUrl        String?
-  notifiedShipped   Boolean       @default(false)
-  notifiedDelivered Boolean       @default(false)
-  cancelReason      String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  status              OrderStatus        @default(PENDING_PAYMENT)
+  paymentMethod       PaymentMethod
+  razorpayOrderId     String?
+  razorpayPaymentId   String?
+  razorpaySignature   String?
+  qikinkOrderId       String?
+  trackingNumber      String?
+  trackingUrl         String?
+  courierName         String?
+  invoiceUrl          String?
+  notifiedShipped     Boolean            @default(false)
+  notifiedDelivered   Boolean            @default(false)
+  cancelReason        String?
+  // Founder calling workflow — denormalized "current" fields for fast
+  // filtering, full history lives in OrderCallLog.
+  contactStatus       OrderContactStatus @default(PENDING)
+  contactAttempts     Int                @default(0)
+  nextFollowUpAt      DateTime?
+  callLogs            OrderCallLog[]
+  refundAmount        Decimal            @default(0) @db.Decimal(10, 2)
+  rtoLossAmount       Decimal            @default(0) @db.Decimal(10, 2)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@index([userId])
   @@index([status])
   @@index([qikinkOrderId])
+  @@index([contactStatus])
+  @@index([nextFollowUpAt])
+}
+
+model OrderCallLog {
+  id             String             @id @default(cuid())
+  orderId        String
+  order          Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status         OrderContactStatus
+  note           String?            @db.Text
+  nextFollowUpAt DateTime?
+  createdByEmail String?
+  createdAt      DateTime           @default(now())
+
+  @@index([orderId])
 }
 
 model OrderItem {
-  id          String         @id @default(cuid())
-  orderId     String
-  order       Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product        @relation(fields: [productId], references: [id])
-  variantId   String
-  variant     ProductVariant @relation(fields: [variantId], references: [id])
-  quantity    Int
-  unitPrice   Decimal        @db.Decimal(10, 2)
-  totalPrice  Decimal        @db.Decimal(10, 2)
+  id         String         @id @default(cuid())
+  orderId    String
+  order      Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product        @relation(fields: [productId], references: [id])
+  variantId  String
+  variant    ProductVariant @relation(fields: [variantId], references: [id])
+  quantity   Int
+  unitPrice  Decimal        @db.Decimal(10, 2)
+  totalPrice Decimal        @db.Decimal(10, 2)
 
   @@index([orderId])
 }
@@ -448,12 +488,155 @@ enum SyncJobStatus {
 }
 
 model SyncLog {
-  id            String        @id @default(cuid())
-  jobType       SyncJobType
-  status        SyncJobStatus
-  itemsSynced   Int           @default(0)
-  itemsFailed   Int           @default(0)
-  errorMessage  String?       @db.Text
-  startedAt     DateTime      @default(now())
-  finishedAt    DateTime?
+  id           String        @id @default(cuid())
+  jobType      SyncJobType
+  status       SyncJobStatus
+  itemsSynced  Int           @default(0)
+  itemsFailed  Int           @default(0)
+  errorMessage String?       @db.Text
+  startedAt    DateTime      @default(now())
+  finishedAt   DateTime?
+}
+
+// ---------------------------------------------------------------------------
+// Founder Portal — completely separate auth realm from the storefront's
+// `User` table. A breach of customer accounts/sessions has zero bearing on
+// this table, and vice versa. Served only on founder.aneem.in (enforced in
+// middleware.ts), authenticated via a separate NextAuth instance/cookie.
+// ---------------------------------------------------------------------------
+
+enum FounderRole {
+  OWNER
+  STAFF
+}
+
+model FounderUser {
+  id               String            @id @default(cuid())
+  name             String
+  email            String            @unique
+  passwordHash     String
+  role             FounderRole       @default(OWNER)
+  isActive         Boolean           @default(true)
+  twoFactorEnabled Boolean           @default(false)
+  twoFactorSecret  String? // base32 TOTP secret, only set once 2FA is enabled
+  lastLoginAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  auditLogs        FounderAuditLog[]
+}
+
+model FounderLoginAttempt {
+  id            String   @id @default(cuid())
+  email         String
+  ipAddress     String
+  userAgent     String?
+  success       Boolean
+  failureReason String?
+  createdAt     DateTime @default(now())
+
+  @@index([email])
+  @@index([createdAt])
+}
+
+model FounderAuditLog {
+  id            String       @id @default(cuid())
+  founderUserId String?
+  founderUser   FounderUser? @relation(fields: [founderUserId], references: [id])
+  action        String // e.g. "order.contact_status_updated", "cost_config.updated"
+  entityType    String? // e.g. "Order", "ProductCost"
+  entityId      String?
+  metadata      Json?
+  ipAddress     String?
+  createdAt     DateTime     @default(now())
+
+  @@index([founderUserId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Cost configuration — inputs to the profit engine. Everything here is
+// admin-editable from the Founder Portal; profit calculations read these
+// instead of hardcoded assumptions.
+// ---------------------------------------------------------------------------
+
+// Per-product cost basis (Qikink product + printing cost). Keyed by Product
+// rather than ProductVariant — Qikink's per-SKU cost usually only varies by
+// product, not size; extend to ProductVariant later if that stops holding.
+model ProductCost {
+  id           String   @id @default(cuid())
+  productId    String   @unique
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productCost  Decimal  @default(0) @db.Decimal(10, 2)
+  printingCost Decimal  @default(0) @db.Decimal(10, 2)
+  updatedAt    DateTime @updatedAt
+}
+
+// Singleton-style config row (one record, id = "default") for costs that
+// apply store-wide rather than per-product.
+model CostSettings {
+  id                   String   @id @default("default")
+  defaultShippingCost  Decimal  @default(79) @db.Decimal(10, 2)
+  defaultPackagingCost Decimal  @default(15) @db.Decimal(10, 2)
+  gatewayFeePercent    Decimal  @default(2.36) @db.Decimal(5, 2) // Razorpay's typical blended rate
+  gstPercent           Decimal  @default(0) @db.Decimal(5, 2) // 0 unless the business is GST-registered for apparel
+  updatedAt            DateTime @updatedAt
+}
+
+model MiscExpense {
+  id        String   @id @default(cuid())
+  date      DateTime
+  category  String // e.g. "Software", "Rent", "Salaries"
+  amount    Decimal  @db.Decimal(10, 2)
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
+
+enum AdPlatform {
+  META
+  GOOGLE
+  OTHER
+}
+
+// Manual entry today; swap for a scheduled Meta Ads API pull later without
+// touching any downstream profit/ROAS calculation — they all read this table.
+model AdSpend {
+  id           String     @id @default(cuid())
+  platform     AdPlatform
+  campaign     String?
+  date         DateTime
+  spend        Decimal    @db.Decimal(10, 2)
+  impressions  Int?
+  clicks       Int?
+  conversions  Int?
+  newCustomers Int?
+  createdAt    DateTime   @default(now())
+
+  @@index([date])
+  @@index([platform])
+}
+
+enum TrafficSource {
+  GA4
+  META
+  SEARCH_CONSOLE
+  CLARITY
+}
+
+// Daily snapshot rows so the Marketing Dashboard has something to chart
+// even before live API credentials exist — populated by mock generators
+// (src/lib/integrations/*) until real accounts are connected.
+model TrafficSnapshot {
+  id          String        @id @default(cuid())
+  source      TrafficSource
+  date        DateTime
+  visitors    Int           @default(0)
+  sessions    Int           @default(0)
+  conversions Int           @default(0)
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+
+  @@unique([source, date])
 }
