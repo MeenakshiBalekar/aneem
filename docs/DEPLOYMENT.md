@@ -97,11 +97,53 @@ authenticates cron requests with `Authorization: Bearer $CRON_SECRET` when
 Both are safe to leave unset — the app logs instead of sending, so nothing
 breaks while you set these up post-launch.
 
+## 10. Founder Portal (founder.aneem.in)
+
+The Founder Portal is a completely separate, subdomain-gated part of the
+same deployment — it needs its own DNS record and its own one-time account
+setup.
+
+1. **DNS**: add another record pointing `founder.aneem.in` at Vercel —
+   same process as the main domain (Vercel → Settings → Domains → add
+   `founder.aneem.in`, then add the CNAME it gives you at your registrar).
+   No separate Vercel project needed; one deployment serves both hosts.
+2. **Env vars**:
+   ```
+   FOUNDER_PORTAL_HOST=founder.aneem.in
+   FOUNDER_NEXTAUTH_SECRET=$(openssl rand -base64 32)   # different value from NEXTAUTH_SECRET
+   ```
+3. **Create your founder account** (no public registration route exists by
+   design). From your local machine, pointed at the production
+   `DATABASE_URL`:
+   ```bash
+   FOUNDER_NAME="Your Name" FOUNDER_EMAIL="you@aneem.in" FOUNDER_PASSWORD="a-strong-password-12+chars" \
+     npm run db:seed-founder
+   ```
+   This is a one-time script — rerun it any time to reset the password (it
+   upserts by email).
+4. **Log in** at `https://founder.aneem.in/founder/login`, then immediately
+   go to Security → Enable 2FA.
+5. **Verify isolation**: `https://aneem.in/founder/login` and
+   `https://founder.aneem.in/` (storefront paths) should both return a
+   plain 404 — that's `src/middleware.ts` enforcing the host boundary. If
+   either resolves instead of 404ing, double-check `FOUNDER_PORTAL_HOST`
+   matches the DNS record exactly (including no trailing slash).
+6. **Cost data**: profit figures read from Cost Settings
+   (`/founder/profit/cost-settings`) — nothing there is guessed, so set
+   your real product/printing/shipping/packaging costs and GST rate before
+   trusting the Profit dashboard's numbers.
+7. **AI features** (Copilot chat, Daily CEO Report, marketing content
+   generator): set `ANTHROPIC_API_KEY`. Without it, these fall back to
+   deterministic templates built from the same live data — still useful,
+   just not AI-generated.
+
 ## Post-deploy checklist
 
 - [ ] Place a real test order (COD) end-to-end
-- [ ] Confirm the order appears in `/admin`
+- [ ] Confirm the order appears in `/admin` and in the Founder Portal dashboard
 - [ ] Confirm it appears in your Qikink dashboard (once `QIKINK_USE_MOCK=false`)
 - [ ] Send a test Razorpay payment in test mode before flipping to live keys
 - [ ] Verify `/sitemap.xml` and `/robots.txt` resolve
 - [ ] Run Lighthouse against the deployed URL
+- [ ] Log into `founder.aneem.in`, enable 2FA, verify host isolation (step 5 above)
+- [ ] Set real Cost Settings so the Profit dashboard isn't showing placeholder numbers

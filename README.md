@@ -30,6 +30,20 @@ Qikink calls are served from `src/lib/qikink/mock-data.ts` fixtures, and checkou
 falls back to Cash on Delivery when Razorpay isn't configured. Drop in real API
 keys later via environment variables — no code changes required.
 
+### Founder Portal
+
+A second, completely separate application lives alongside the storefront —
+see [Founder Portal](#founder-portal-1) below. To try it locally:
+
+```bash
+FOUNDER_EMAIL="you@aneem.in" FOUNDER_PASSWORD="a-strong-password-12+chars" npm run db:seed-founder
+```
+
+Then visit `http://founder.localhost:3000/founder/login` (modern browsers
+resolve `*.localhost` to `127.0.0.1` automatically — no `/etc/hosts` edit
+needed). `http://localhost:3000/founder/login` (the storefront host) will
+correctly 404 — that's the host-isolation working as intended.
+
 ## Why It's Architected This Way
 
 **Qikink is the system of record for the catalog.** Products are never
@@ -143,6 +157,7 @@ sending when credentials are unset — safe to leave blank until you're ready.
 | `npm run db:push` | Push Prisma schema to DB (no migration history — good for dev) |
 | `npm run db:migrate` | Create a tracked migration (use for production) |
 | `npm run db:seed` | Load fixture catalog/bundles/discounts/admin user |
+| `npm run db:seed-founder` | Create/reset the Founder Portal login (`FOUNDER_EMAIL`/`FOUNDER_PASSWORD` env vars) |
 | `npm run db:studio` | Prisma Studio (visual DB browser) |
 
 ## Deployment
@@ -159,6 +174,70 @@ including cron setup (`vercel.json`) and webhook configuration.
   `Referrer-Policy`, `Permissions-Policy`) set in `next.config.mjs`.
 - Passwords hashed with bcrypt; sessions are JWT-based via NextAuth.
 - `/admin` is gated by `session.user.role === "ADMIN"` at the layout level.
+
+## Founder Portal
+
+A private, subdomain-gated operations console — separate from both the
+storefront and the `/admin` catalog admin. Built for one person to run the
+whole business from: confirming COD orders by phone, seeing real profit
+(not just revenue), and getting AI-assisted daily priorities.
+
+**Isolation model** (`src/middleware.ts`): the portal is served only on
+`FOUNDER_PORTAL_HOST` (default `founder.localhost:3000` in dev,
+`founder.aneem.in` in prod). Any request to a `/founder*` or
+`/api/founder*` path on a different host gets a plain 404 — not a login
+redirect, nothing that confirms the route exists. Conversely, the founder
+host serves *only* founder routes; a request for `/` or `/checkout` on
+`founder.aneem.in` also 404s.
+
+**Auth** (`src/lib/founder/auth.ts`): a second, fully independent NextAuth
+instance — its own `FounderUser` table (not `User`), its own JWT secret
+(`FOUNDER_NEXTAUTH_SECRET`), its own session cookie name. A breach of
+customer accounts has zero bearing on founder access, and vice versa.
+Passwords are bcrypt-hashed; optional TOTP 2FA (`otplib`) can be enabled
+from Security settings; every login attempt (success or failure) is logged
+to `FounderLoginAttempt`, and every meaningful mutation is logged to
+`FounderAuditLog` (`src/lib/founder/audit.ts`). Mutating API routes are
+protected by a double-submit-cookie CSRF check (`src/lib/founder/csrf.ts`)
+and per-IP rate limiting (login capped tighter than anything else in the app).
+
+**Pages** (`src/app/founder/(portal)/`):
+- **Dashboard** — revenue/orders/profit across every period the brief asked
+  for, ecommerce KPIs (AOV, ROAS, CAC, LTV, repeat %, cart abandonment,
+  checkout completion), clickable order-health tiles.
+- **Calling Queue** — today's orders with full contact info, an editable
+  contact-status dropdown and notes field that autosave on every change
+  (`src/components/founder/calling-queue-card.tsx`), one-click call/email/
+  WhatsApp/copy actions, and an automatic Follow-up Queue for anyone marked
+  No Response or Requested Callback.
+- **Orders** — filterable/searchable order management with CSV, Excel
+  (`xlsx`), and print-to-PDF export.
+- **Profit** — the Monthly Profit Statement (revenue minus product/printing/
+  shipping/packaging/gateway/advertising/refunds/returns/misc, matching the
+  exact structure requested), product/bundle/customer profit breakdowns.
+  All cost inputs are editable at `/founder/profit/cost-settings` — nothing
+  is a guess.
+- **Marketing** — GA4/Meta/Search Console/Clarity-shaped traffic dashboard.
+  Runs on clearly-labeled deterministic mock data until real API
+  credentials are set (`src/lib/integrations/marketing.ts`), same
+  mock-then-real pattern as Qikink. "Most Engaged Products" is real data
+  (order + wishlist activity), not mocked.
+- **Inventory** — stock levels, sync health, fulfillment-status breakdown.
+- **AI Copilot** — a chat that answers questions using a live snapshot of
+  your own business data (`src/lib/founder/ai-context.ts` +
+  `src/lib/founder/copilot.ts`), a Daily CEO Report, rule-based Product
+  Health Scores (every input to the score is shown, not a black box), and
+  an AI marketing-content generator (captions/ad copy/email/WhatsApp).
+  All AI features need `ANTHROPIC_API_KEY`; without it they fall back to
+  deterministic, data-backed summaries rather than failing.
+- **Daily Action Center** (`src/lib/founder/action-center.ts`) — a
+  rule-based (not AI) priority banner shown on every founder page: pending
+  callbacks, unconfirmed COD orders, Qikink sync health, out-of-stock
+  alerts. Deliberately deterministic — "what needs my attention" should
+  never be a hallucination risk.
+
+**Setup**: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#10-founder-portal-founderaneemin)
+for the full DNS + env var walkthrough.
 
 ## Future Integrations
 
