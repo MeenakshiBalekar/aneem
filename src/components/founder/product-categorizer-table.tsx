@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { X, Check } from "lucide-react";
+import { X, Check, Trash2 } from "lucide-react";
 import { founderFetch } from "@/lib/founder/fetch-client";
 import type { CategoryTreeOption } from "@/lib/founder/product-catalog";
 
@@ -59,7 +60,9 @@ function ProductRow({ product, categoryTree }: { product: CatalogRow; categoryTr
   const [categoryId, setCategoryId] = useState(product.categoryId ?? "");
   const [tags, setTags] = useState(product.tags);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [saved, setSaved] = useState<{ categoryId: string | null; isActive: boolean } | null>(null);
+  const router = useRouter();
 
   const stock = product.variants.reduce((sum, v) => sum + v.stock, 0);
   const isActive = saved ? saved.isActive : product.isActive;
@@ -81,6 +84,20 @@ function ProductRow({ product, categoryTree }: { product: CatalogRow; categoryTr
     const updated = await res.json();
     setSaved({ categoryId: updated.categoryId, isActive: updated.isActive });
     toast.success(updated.isActive ? "Saved — now live on the storefront" : "Saved");
+  }
+
+  async function remove() {
+    if (!window.confirm(`Delete "${product.title}" permanently? This removes all its SKUs too.`)) return;
+    setDeleting(true);
+    const res = await founderFetch(`/api/founder/products/${product.id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error ?? "Couldn't delete");
+      return;
+    }
+    toast.success("Deleted");
+    router.refresh();
   }
 
   return (
@@ -124,13 +141,23 @@ function ProductRow({ product, categoryTree }: { product: CatalogRow; categoryTr
         </span>
       </td>
       <td className="p-2">
-        <button
-          onClick={save}
-          disabled={saving || !dirty}
-          className="bg-accent text-ink flex h-8 items-center gap-1 px-3 text-[11px] font-bold uppercase disabled:opacity-30"
-        >
-          <Check size={12} /> {saving ? "Saving..." : "Save"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={save}
+            disabled={saving || !dirty}
+            className="bg-accent text-ink flex h-8 items-center gap-1 px-3 text-[11px] font-bold uppercase disabled:opacity-30"
+          >
+            <Check size={12} /> {saving ? "Saving..." : "Save"}
+          </button>
+          <button
+            onClick={remove}
+            disabled={deleting}
+            aria-label={`Delete ${product.title}`}
+            className="flex h-8 w-8 items-center justify-center border border-white/15 text-red-400 hover:bg-red-500/10 disabled:opacity-30"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
       </td>
     </tr>
   );

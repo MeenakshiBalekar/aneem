@@ -278,3 +278,42 @@ export async function POST(req: Request) {
     rowErrorCount: parsed.rowErrors.length,
   });
 }
+
+/** Undo a CSV import — every product it creates is tagged `csv:<key>` as
+ * its qikinkProductId (see commitGroup above), so this just wipes anything
+ * with that prefix rather than needing to track import batches. Products
+ * with real order history are skipped rather than deleted (OrderItem has
+ * no cascade on purpose); everything else is safe to remove outright since
+ * a bad CSV import is by definition data nobody has bought yet. */
+export async function DELETE(req: Request) {
+  const session = await getFounderSession();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!verifyCsrfToken(req)) return csrfRejectedResponse();
+
+  const candidates = await prisma.product.findMany({
+    where: { qikinkProductId: { startsWith: "csv:" } },
+    select: { id: true, title: true, _count: { select: { orderItems: true } } },
+  });
+
+  const deletable = candidates.filter((p) => p._count.orderItems === 0);
+  const blocked = candidates.filter((p) => p._count.orderItems > 0);
+  const deletableIds = deletable.map((p) => p.id);
+
+  if (deletableIds.length > 0) {
+    await prisma.cartItem.deleteMany({ where: { productId: { in: deletableIds } } });
+    await prisma.bundleItem.deleteMany({ where: { productId: { in: deletableIds } } });
+    await prisma.product.deleteMany({ where: { id: { in: deletableIds } } });
+  }
+
+  await logFounderAction({
+    founderUserId: session.user.id,
+    action: "catalog.csv_import_deleted",
+    metadata: { deletedCount: deletable.length, blockedCount: blocked.length },
+  });
+
+  return NextResponse.json({
+    deletedCount: deletable.length,
+    blockedCount: blocked.length,
+    blocked: blocked.map((p) => ({ title: p.title })),
+  });
+}
