@@ -10,7 +10,15 @@ async function getNavCategories() {
   return prisma.category.findMany({
     where: { isActive: true, parentId: null },
     orderBy: { sortOrder: "asc" },
-    select: { name: true, slug: true },
+    select: {
+      name: true,
+      slug: true,
+      children: {
+        where: { isActive: true },
+        orderBy: { sortOrder: "asc" },
+        select: { name: true, slug: true },
+      },
+    },
   });
 }
 

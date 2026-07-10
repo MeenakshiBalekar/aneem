@@ -18,33 +18,42 @@ const LIMITS: { pattern: RegExp; limit: number }[] = [
 ];
 
 // Host that serves the Founder Portal. Set via env so dev (founder.localhost:3000)
-// and prod (founder.aneem.in) both work without code changes.
+// and prod (founder.aneem.in) both work without code changes. This MUST be
+// set as an environment variable on the Vercel project (Production, and
+// Preview if you test there) — if it's unset in an environment, onFounderHost
+// is never true there and the founder subdomain silently falls through to
+// the storefront instead of 404ing or rewriting.
 const FOUNDER_HOST = process.env.FOUNDER_PORTAL_HOST ?? "founder.localhost:3000";
 
-function isFounderPath(pathname: string): boolean {
-  return (
-    pathname.startsWith("/founder") ||
-    pathname.startsWith("/api/founder-auth") ||
-    pathname.startsWith("/api/founder/")
-  );
+// Every page and redirect in the app already hardcodes the `/founder/...`
+// prefix (FounderSidebar links, `redirect("/founder/login")`, the NextAuth
+// cookie path, etc). Rather than rewriting that surface area to drop the
+// prefix, we treat `src/app/founder` as this *host's* document root: any
+// request on the founder subdomain for a path that ISN'T already under
+// /founder gets transparently mapped into it. `/` -> `/founder`,
+// `/orders` -> `/founder/orders`. Paths that already start with /founder
+// (i.e. everything the app itself links to) pass through untouched, so
+// there's no double-prefixing.
+function isFounderPagePath(pathname: string): boolean {
+  return pathname === "/founder" || pathname.startsWith("/founder/");
 }
 
-export function middleware(req: NextRequest) {
-  const host = req.headers.get("host") ?? "";
+function isFounderApiPath(pathname: string): boolean {
+  return pathname.startsWith("/api/founder-auth") || pathname.startsWith("/api/founder/");
+}
+
+// Vercel terminates TLS at the edge and proxies the request onward; the
+// hostname the visitor actually typed (founder.aneem.in) is carried in
+// `x-forwarded-host`. `host` is normally identical but is kept as a
+// fallback for other proxies / `next dev`, per Vercel's recommended
+// pattern for host-based routing.
+function getRequestHost(req: NextRequest): string {
+  return req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
+}
+
+function finalize(req: NextRequest, onFounderHost: boolean, res: NextResponse): NextResponse {
   const { pathname } = req.nextUrl;
-  const onFounderHost = host === FOUNDER_HOST;
-  const requestingFounderPath = isFounderPath(pathname);
-
-  // Hard isolation: the founder subdomain serves *only* founder routes, and
-  // founder routes are served *only* on the founder subdomain. Someone who
-  // guesses /founder/dashboard on aneem.in gets a plain 404 — not a
-  // redirect, not a login prompt, nothing that confirms the route exists.
-  if (requestingFounderPath !== onFounderHost) {
-    return new NextResponse(null, { status: 404 });
-  }
-
   const rule = LIMITS.find((r) => r.pattern.test(pathname));
-  const res = NextResponse.next();
 
   if (rule) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
@@ -65,6 +74,40 @@ export function middleware(req: NextRequest) {
   }
 
   return res;
+}
+
+export function middleware(req: NextRequest) {
+  const host = getRequestHost(req);
+  const { pathname } = req.nextUrl;
+  const onFounderHost = host === FOUNDER_HOST;
+
+  // --- API routes: isolate by host, never rewrite. A rewrite here would
+  // break same-origin calls like founderFetch(), which already target the
+  // correct /api/founder/* path directly. ---
+  if (pathname.startsWith("/api/")) {
+    if (isFounderApiPath(pathname) !== onFounderHost) {
+      return new NextResponse(null, { status: 404 });
+    }
+    return finalize(req, onFounderHost, NextResponse.next());
+  }
+
+  // --- Page routes ---
+  if (onFounderHost) {
+    if (isFounderPagePath(pathname)) {
+      return finalize(req, onFounderHost, NextResponse.next());
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = pathname === "/" ? "/founder" : `/founder${pathname}`;
+    return finalize(req, onFounderHost, NextResponse.rewrite(url));
+  }
+
+  // Main storefront host(s): founder pages must never resolve here — a
+  // direct 404, not a redirect, so the route's existence isn't confirmed.
+  if (isFounderPagePath(pathname)) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  return finalize(req, onFounderHost, NextResponse.next());
 }
 
 export const config = {

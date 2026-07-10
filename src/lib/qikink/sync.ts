@@ -3,31 +3,32 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
 import { qikinkClient } from "./client";
+import { CATEGORY_MAP, PARENT_CATEGORIES } from "./category-map";
 import type { QikinkFulfillmentUpdate, QikinkProduct } from "./types";
 
-// Category name -> our Category slug. New Qikink categories fall back to
-// an auto-created category via ensureCategory(), so a brand-new product
-// type in Qikink never gets silently dropped.
-const CATEGORY_SLUG_MAP: Record<string, string> = {
-  "Men's Oversized T-Shirts": "mens-oversized-tshirts",
-  "Men's Gym T-Shirts": "mens-gym-tshirts",
-  "Men's Oversized Shirts": "mens-oversized-shirts",
-  "Women's Oversized T-Shirts": "womens-oversized-tshirts",
-  "Women's Gym T-Shirts": "womens-gym-tshirts",
-  Caps: "caps",
-  Bottles: "bottles",
-  Tumblers: "tumblers",
-  Hoodies: "hoodies",
-  Sweatshirts: "sweatshirts",
-  Jackets: "jackets",
-};
-
+/** Upserts (and nests, per CATEGORY_MAP) the Category row for one Qikink
+ * category name. A category not in CATEGORY_MAP still gets created via
+ * slugify() so a brand-new product type in Qikink is never silently
+ * dropped — it just starts out as its own top-level section. */
 async function ensureCategory(qikinkCategoryName: string) {
-  const slug = CATEGORY_SLUG_MAP[qikinkCategoryName] ?? slugify(qikinkCategoryName);
+  const def = CATEGORY_MAP[qikinkCategoryName];
+  const slug = def?.slug ?? slugify(qikinkCategoryName);
+
+  let parentId: string | null = null;
+  if (def?.parent) {
+    const parentDef = PARENT_CATEGORIES[def.parent];
+    const parent = await prisma.category.upsert({
+      where: { slug: parentDef.slug },
+      update: {},
+      create: { name: parentDef.name, slug: parentDef.slug },
+    });
+    parentId = parent.id;
+  }
+
   return prisma.category.upsert({
     where: { slug },
-    update: {},
-    create: { name: qikinkCategoryName, slug },
+    update: { parentId },
+    create: { name: qikinkCategoryName, slug, parentId },
   });
 }
 

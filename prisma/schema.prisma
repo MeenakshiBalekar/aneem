@@ -46,41 +46,45 @@ enum SyncStatus {
 // Qikink is the system of record — everything here is mirrored from a
 // Qikink product via `qikinkProductId` and kept fresh by the sync service.
 model Product {
-  id              String            @id @default(cuid())
-  qikinkProductId String            @unique
-  title           String
-  slug            String            @unique
-  description     String            @db.Text
-  fabricDetails   String?           @db.Text
-  washCare        String?           @db.Text
-  categoryId      String
-  category        Category          @relation(fields: [categoryId], references: [id])
-  tags            String[]          @default([])
-  images          ProductImage[]
-  videoUrl        String?
-  variants        ProductVariant[]
-  basePrice       Decimal           @db.Decimal(10, 2)
-  compareAtPrice  Decimal?          @db.Decimal(10, 2)
-  isActive        Boolean           @default(true)
-  isBestSeller    Boolean           @default(false)
-  isNewArrival    Boolean           @default(false)
-  isTrending      Boolean           @default(false)
-  avgRating       Float             @default(0)
-  reviewCount     Int               @default(0)
-  syncStatus      SyncStatus        @default(PENDING)
-  lastSyncedAt    DateTime?
-  seoTitle        String?
-  seoDescription  String?
-  reviews         Review[]
-  orderItems      OrderItem[]
-  cartItems       CartItem[]
-  wishlistItems   WishlistItem[]
-  bundleItems     BundleItem[]
-  crossSellFrom   ProductRelation[] @relation("SourceProduct")
-  crossSellTo     ProductRelation[] @relation("RelatedProduct")
-  costConfig      ProductCost?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id               String                   @id @default(cuid())
+  qikinkProductId  String                   @unique
+  title            String
+  slug             String                   @unique
+  description      String                   @db.Text
+  fabricDetails    String?                  @db.Text
+  washCare         String?                  @db.Text
+  categoryId       String
+  category         Category                 @relation(fields: [categoryId], references: [id])
+  tags             String[]                 @default([])
+  images           ProductImage[]
+  videoUrl         String?
+  variants         ProductVariant[]
+  basePrice        Decimal                  @db.Decimal(10, 2)
+  compareAtPrice   Decimal?                 @db.Decimal(10, 2)
+  isActive         Boolean                  @default(true)
+  isBestSeller     Boolean                  @default(false)
+  isNewArrival     Boolean                  @default(false)
+  isTrending       Boolean                  @default(false)
+  avgRating        Float                    @default(0)
+  reviewCount      Int                      @default(0)
+  syncStatus       SyncStatus               @default(PENDING)
+  lastSyncedAt     DateTime?
+  seoTitle         String?
+  seoDescription   String?
+  reviews          Review[]
+  orderItems       OrderItem[]
+  cartItems        CartItem[]
+  wishlistItems    WishlistItem[]
+  bundleItems      BundleItem[]
+  crossSellFrom    ProductRelation[]        @relation("SourceProduct")
+  crossSellTo      ProductRelation[]        @relation("RelatedProduct")
+  costConfig       ProductCost?
+  marketingAssets  MarketingAsset[]         @relation("ProductMarketingAssets")
+  marketingProfile ProductMarketingProfile?
+  marketingContent MarketingContent[]       @relation("ProductMarketingContent")
+  reelBriefs       ReelBrief[]              @relation("ProductMarketingReels")
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   @@index([categoryId])
   @@index([isBestSeller])
@@ -639,4 +643,140 @@ model TrafficSnapshot {
   createdAt   DateTime      @default(now())
 
   @@unique([source, date])
+}
+
+// ---------------------------------------------------------------------------
+// AI Marketing Studio — Founder Portal's content generation engine. Every
+// text/copy generator here runs for real against Claude; the Reel Generator
+// and Image Enhancement pieces produce real creative briefs today and are
+// wired to pluggable render/image providers that return clearly-flagged
+// mock output (isMock) until real API credentials are configured — same
+// mock-then-real pattern as Qikink and the Marketing Dashboard.
+// ---------------------------------------------------------------------------
+
+enum MarketingAssetKind {
+  SOURCE_FRONT
+  SOURCE_BACK
+  SOURCE_LIFESTYLE
+  SOURCE_FABRIC
+  ENHANCED
+  MOCKUP
+  HERO
+  THUMBNAIL
+  REEL_VIDEO
+  REEL_COVER
+}
+
+model MarketingAsset {
+  id        String             @id @default(cuid())
+  productId String
+  product   Product            @relation("ProductMarketingAssets", fields: [productId], references: [id], onDelete: Cascade)
+  kind      MarketingAssetKind
+  url       String
+  provider  String? // e.g. "vercel-blob", "mock", "replicate"
+  isMock    Boolean            @default(false)
+  metadata  Json?
+  createdAt DateTime           @default(now())
+
+  @@index([productId])
+  @@index([kind])
+}
+
+// AI's understanding of a product — detected once from uploaded images +
+// structured fields, reused by every downstream generator so tone/aesthetic
+// stays consistent across captions, reels, ads, etc.
+model ProductMarketingProfile {
+  id              String    @id @default(cuid())
+  productId       String    @unique
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  collection      String?
+  gsm             Int?
+  fit             String?
+  colorName       String?
+  fabric          String?
+  // AI-detected, from src/lib/marketing-studio/product-analysis.ts
+  typographyStyle String?
+  mood            String?
+  aesthetic       String?
+  positioning     String? // e.g. "premium", "minimal", "streetwear" — free text from AI
+  targetAudience  String?
+  colorPalette    Json? // string[] of hex codes / named colors
+  designLanguage  String?
+  rawAnalysis     Json? // full AI response, kept for reference/debugging
+  analyzedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum MarketingContentType {
+  CAPTION
+  HASHTAGS
+  CAROUSEL
+  STORY
+  PRODUCT_DESCRIPTION
+  META_AD
+  WHATSAPP_CAMPAIGN
+  EMAIL_CAMPAIGN
+  OFFER_SUGGESTION
+  BUNDLE_CREATIVE
+  THUMBNAIL_CONCEPT
+}
+
+// Generic store for every generated text/structured content piece — one
+// row per generation, so founders can regenerate and compare rather than
+// overwrite. `content` shape depends on `type` (see
+// src/lib/marketing-studio/types.ts for the per-type contracts).
+model MarketingContent {
+  id        String               @id @default(cuid())
+  productId String
+  product   Product              @relation("ProductMarketingContent", fields: [productId], references: [id], onDelete: Cascade)
+  type      MarketingContentType
+  variant   String? // e.g. "short" | "luxury" | "launch" | "restock"
+  content   Json
+  score     Json? // hookScore/scrollStopScore/luxuryScore/viralityScore/conversionScore/confidenceScore/expectedCTR/expectedSaves/expectedShares/expectedWatchTime
+  isMock    Boolean              @default(false)
+  createdAt DateTime             @default(now())
+
+  @@index([productId])
+  @@index([type])
+}
+
+enum ReelVoiceOption {
+  NONE
+  MALE
+  FEMALE
+  LUXURY
+  STREETWEAR
+  MOTIVATIONAL
+}
+
+enum ReelStatus {
+  DRAFT
+  SCRIPT_READY
+  RENDERING
+  READY
+  FAILED
+}
+
+// A generated reel's creative brief (always real, via Claude) plus its
+// render job against a pluggable hosted video-assembly API (mocked until
+// a provider is configured — see src/lib/marketing-studio/video-render.ts).
+model ReelBrief {
+  id               String          @id @default(cuid())
+  productId        String
+  product          Product         @relation("ProductMarketingReels", fields: [productId], references: [id], onDelete: Cascade)
+  status           ReelStatus      @default(DRAFT)
+  scenes           Json // ordered scene[] — description, onScreenText, cameraDirection, durationSeconds, effects[]
+  voiceOption      ReelVoiceOption @default(NONE)
+  voiceoverScript  String?         @db.Text
+  musicSuggestion  Json? // { songName, mood, bpm, reason, isCopyrightFree }
+  renderProvider   String?
+  externalRenderId String?
+  videoUrl         String?
+  isMock           Boolean         @default(true)
+  errorMessage     String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([productId])
 }

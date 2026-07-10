@@ -140,11 +140,19 @@ setup.
    same process as the main domain (Vercel → Settings → Domains → add
    `founder.aneem.in`, then add the CNAME it gives you at your registrar).
    No separate Vercel project needed; one deployment serves both hosts.
-2. **Env vars**:
+2. **Env vars** — set on the **Production** environment in Vercel Project
+   Settings → Environment Variables (and Preview too, if you test there):
    ```
    FOUNDER_PORTAL_HOST=founder.aneem.in
    FOUNDER_NEXTAUTH_SECRET=$(openssl rand -base64 32)   # different value from NEXTAUTH_SECRET
    ```
+   `FOUNDER_PORTAL_HOST` is what `src/middleware.ts` compares the incoming
+   request's hostname against to decide whether to serve `src/app/founder`.
+   If it's missing in an environment, that environment's requests to
+   `founder.aneem.in` silently fall through to the ordinary storefront
+   routing instead of the portal — there's no error, it just serves the
+   wrong app. After setting/changing it, redeploy (env var changes don't
+   apply to an already-built deployment).
 3. **Create your founder account** (no public registration route exists by
    design). From your local machine, pointed at the production
    `DATABASE_URL`:
@@ -169,6 +177,25 @@ setup.
    generator): set `ANTHROPIC_API_KEY`. Without it, these fall back to
    deterministic templates built from the same live data — still useful,
    just not AI-generated.
+8. **AI Marketing Studio** (`/founder/marketing-studio`) — the product
+   content/creative engine (captions, hashtags, carousels, stories,
+   descriptions, ad/WhatsApp/email copy, reel briefs, offers, bundle
+   creative, thumbnails, image enhancement):
+   - `ANTHROPIC_API_KEY` (same key as above) drives every text and vision
+     generator. Unset it and the Studio still fully works, just with
+     realistic mock output instead of real AI copy.
+   - `BLOB_READ_WRITE_TOKEN` (Vercel → Storage → create a Blob store →
+     copy the token) is required for the product photo uploader — there's
+     no mock fallback for file storage itself.
+   - `VIDEO_RENDER_API_KEY` / `VIDEO_RENDER_API_BASE_URL` are optional —
+     point them at a hosted video-assembly API (Creatomate, Shotstack,
+     JSON2Video). Without them, the Reel Generator still produces a full
+     real shot-by-shot creative brief via Claude; it just won't render an
+     actual MP4 (Vercel serverless can't run FFmpeg or hold render state).
+   - `IMAGE_API_KEY` / `IMAGE_API_BASE_URL` are optional — point them at a
+     hosted image generation/enhancement API. Without them, enhancement
+     operations are recorded but return the original source image
+     (`isMock: true`) instead of a new render.
 
 ## Post-deploy checklist
 
