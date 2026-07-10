@@ -1,9 +1,14 @@
-// Shapes mirror Qikink's documented Product/Order/Fulfillment API contracts.
-// Keeping these separate from our Prisma models means a Qikink API change
-// only touches the mapper in sync.ts, not the rest of the app.
-
+// Shapes mirror Qikink's documented Order/Fulfillment API contracts
+// (documenter.getpostman.com/view/26157218/2sB3QKqpma — "QIKINK API COPY").
+// Confirmed against the real docs: POST /token (form-urlencoded) -> this
+// shape; then ClientId + Accesstoken as headers on every other call.
+// Qikink has no products/catalog API at all — the Postman collection only
+// has Authorization and Orders folders. See mock-data.ts and sync.ts for
+// how that's handled (fixtures locally; real catalog data has to come from
+// a CSV export, not a sync).
 export interface QikinkAuthToken {
-  access_token: string;
+  ClientId: string;
+  Accesstoken: string;
   expires_in: number;
 }
 
@@ -39,32 +44,44 @@ export interface QikinkProduct {
   updated_at: string;
 }
 
+/** search_from_my_products: 1 means "look this SKU up in my existing
+ * Qikink products" (what we use — our catalog is already pushed/designed
+ * in Qikink) — designs[] is only required when it's 0. All numeric-looking
+ * fields are sent as strings in Qikink's own examples despite being
+ * described as "Numeric"/"Number". */
 export interface QikinkOrderLineItem {
+  search_from_my_products: 1;
   sku: string;
-  quantity: number;
-  price: number;
+  quantity: string;
+  price: string;
 }
 
+/** Confirmed against a real example request/response
+ * (documenter.getpostman.com/view/26157218/2sB3QKqpma, Create Order). */
 export interface QikinkCreateOrderPayload {
-  order_number: string; // our order number, used as idempotency key
+  order_number: string; // unique, never reused — our order number as idempotency key
+  qikink_shipping: "0" | "1"; // 0 = self-ship, 1 = Qikink handles shipment
+  gateway: "COD" | "Prepaid";
+  total_order_value: string;
   line_items: QikinkOrderLineItem[];
-  shipping_address: {
-    name: string;
+  shipping_address?: {
+    first_name: string;
+    last_name?: string;
+    address1: string;
+    address2?: string;
     phone: string;
-    address_line1: string;
-    address_line2?: string;
+    email: string;
     city: string;
-    state: string;
-    pincode: string;
-    country: string;
+    zip: string;
+    province: string;
+    country_code: string; // ISO 3166-1 alpha-2, e.g. "IN"
   };
-  payment_status: "prepaid" | "cod";
-  total_order_value: number;
 }
 
 export interface QikinkCreateOrderResponse {
-  order_id: string;
-  status: string;
+  message: string;
+  order_id: number;
+  status_code: string;
 }
 
 export interface QikinkFulfillmentUpdate {

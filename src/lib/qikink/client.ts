@@ -24,13 +24,20 @@ function isMockConfigured(): boolean {
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
+/** Matches the confirmed real contract exactly: POST /token as a
+ * form-urlencoded body (not JSON), response has capitalized ClientId /
+ * Accesstoken keys. Calling this again invalidates the previous token
+ * ("previous token will be overwritten" per Qikink's own docs), so this
+ * caches and only refreshes once the cached one is near expiry rather than
+ * fetching a fresh one per request. */
 async function getAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.token;
 
+  const body = new URLSearchParams({ ClientId: CLIENT_ID, client_secret: CLIENT_SECRET });
   const res = await fetch(`${BASE_URL}/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ClientId: CLIENT_ID, client_secret: CLIENT_SECRET }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
     cache: "no-store",
   });
 
@@ -39,17 +46,21 @@ async function getAccessToken(): Promise<string> {
   }
 
   const data = (await res.json()) as QikinkAuthToken;
-  cachedToken = { token: data.access_token, expiresAt: Date.now() + (data.expires_in - 60) * 1000 };
+  cachedToken = { token: data.Accesstoken, expiresAt: Date.now() + (data.expires_in - 60) * 1000 };
   return cachedToken.token;
 }
 
+/** ClientId + Accesstoken go in headers with those exact names/casing on
+ * every call after the token exchange — confirmed from the real docs'
+ * Create Order example, not a Bearer-token pattern. */
 async function qikinkFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getAccessToken();
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      ClientId: CLIENT_ID,
+      Accesstoken: token,
       ...init?.headers,
     },
     cache: "no-store",
@@ -63,32 +74,43 @@ async function qikinkFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const qikinkClient = {
-  /** Full product catalog, used by the nightly/on-demand full sync. */
+  /** Qikink has NO products/catalog API (confirmed against their real
+   * Postman docs — the collection only has Authorization and Orders
+   * folders). Real-mode calls throw instead of silently 404ing on a path
+   * that was never real. Catalog data has to come from a CSV export, not
+   * a sync — this stays mock-only for local dev fixtures. */
   async listProducts(): Promise<QikinkProduct[]> {
     if (isMockConfigured()) return MOCK_QIKINK_PRODUCTS;
-    return qikinkFetch<QikinkProduct[]>("/products");
+    throw new Error(
+      "Qikink has no products API — listProducts() only works in mock mode. Real catalog data must be imported from a Qikink CSV export.",
+    );
   },
 
-  /** Single product lookup, used when a targeted webhook event fires. */
   async getProduct(productId: string): Promise<QikinkProduct | null> {
     if (isMockConfigured()) return MOCK_QIKINK_PRODUCTS.find((p) => p.product_id === productId) ?? null;
-    return qikinkFetch<QikinkProduct>(`/products/${productId}`);
+    throw new Error("Qikink has no products API — getProduct() only works in mock mode.");
   },
 
-  /** Pushes a paid/COD-confirmed order to Qikink for production + fulfillment. */
+  /** Confirmed real endpoint: POST /order/create (singular "order").
+   * See QikinkCreateOrderPayload for which fields are confirmed vs. still
+   * a best guess pending the full example from the docs. */
   async createOrder(payload: QikinkCreateOrderPayload): Promise<QikinkCreateOrderResponse> {
     if (isMockConfigured()) {
-      return { order_id: `qk_order_${payload.order_number}`, status: "received" };
+      return { message: "Order created successfully", order_id: Date.now(), status_code: "200" };
     }
-    return qikinkFetch<QikinkCreateOrderResponse>("/orders/create", {
+    return qikinkFetch<QikinkCreateOrderResponse>("/order/create", {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
+  /** Unconfirmed — Qikink's real Orders folder only lists Create Order,
+   * Retrieve a list of Orders, and Retrieve Single Order; no cancel
+   * endpoint was visible. Unused elsewhere in the app currently; verify
+   * against the docs before wiring this up for real. */
   async cancelOrder(qikinkOrderId: string): Promise<{ status: string }> {
     if (isMockConfigured()) return { status: "cancelled" };
-    return qikinkFetch<{ status: string }>(`/orders/${qikinkOrderId}/cancel`, { method: "POST" });
+    throw new Error(`Qikink order cancellation endpoint is unconfirmed — verify against the API docs before use (order ${qikinkOrderId}).`);
   },
 
   isMockMode: isMockConfigured,

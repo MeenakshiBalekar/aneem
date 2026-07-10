@@ -3,6 +3,7 @@ import { getFilteredProducts, getCategoryTree } from "@/lib/founder/product-cata
 import { ProductFilterBar } from "@/components/founder/product-filter-bar";
 import { ProductCategorizerTable } from "@/components/founder/product-categorizer-table";
 import { FounderSyncButton } from "@/components/founder/founder-sync-button";
+import { CatalogImportDialog } from "@/components/founder/catalog-import-dialog";
 
 export const metadata = { title: "Products" };
 export const dynamic = "force-dynamic";
@@ -31,7 +32,10 @@ export default async function FounderProductsPage({
             Assign a category to make a synced product live on the storefront. New Qikink syncs never overwrite this.
           </p>
         </div>
-        <FounderSyncButton />
+        <div className="flex items-center gap-2">
+          <CatalogImportDialog />
+          <FounderSyncButton />
+        </div>
       </div>
 
       <Suspense fallback={null}>
