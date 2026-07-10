@@ -17,7 +17,7 @@ const BASE_URL = process.env.QIKINK_API_BASE_URL ?? "https://sandbox.qikink.com/
 const CLIENT_ID = process.env.QIKINK_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.QIKINK_CLIENT_SECRET ?? "";
 
-function useMock(): boolean {
+function isMockConfigured(): boolean {
   if (process.env.QIKINK_USE_MOCK === "false") return false;
   return process.env.QIKINK_USE_MOCK === "true" || !CLIENT_ID || !CLIENT_SECRET;
 }
@@ -65,19 +65,19 @@ async function qikinkFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export const qikinkClient = {
   /** Full product catalog, used by the nightly/on-demand full sync. */
   async listProducts(): Promise<QikinkProduct[]> {
-    if (useMock()) return MOCK_QIKINK_PRODUCTS;
+    if (isMockConfigured()) return MOCK_QIKINK_PRODUCTS;
     return qikinkFetch<QikinkProduct[]>("/products");
   },
 
   /** Single product lookup, used when a targeted webhook event fires. */
   async getProduct(productId: string): Promise<QikinkProduct | null> {
-    if (useMock()) return MOCK_QIKINK_PRODUCTS.find((p) => p.product_id === productId) ?? null;
+    if (isMockConfigured()) return MOCK_QIKINK_PRODUCTS.find((p) => p.product_id === productId) ?? null;
     return qikinkFetch<QikinkProduct>(`/products/${productId}`);
   },
 
   /** Pushes a paid/COD-confirmed order to Qikink for production + fulfillment. */
   async createOrder(payload: QikinkCreateOrderPayload): Promise<QikinkCreateOrderResponse> {
-    if (useMock()) {
+    if (isMockConfigured()) {
       return { order_id: `qk_order_${payload.order_number}`, status: "received" };
     }
     return qikinkFetch<QikinkCreateOrderResponse>("/orders/create", {
@@ -87,9 +87,9 @@ export const qikinkClient = {
   },
 
   async cancelOrder(qikinkOrderId: string): Promise<{ status: string }> {
-    if (useMock()) return { status: "cancelled" };
+    if (isMockConfigured()) return { status: "cancelled" };
     return qikinkFetch<{ status: string }>(`/orders/${qikinkOrderId}/cancel`, { method: "POST" });
   },
 
-  isMockMode: useMock,
+  isMockMode: isMockConfigured,
 };

@@ -64,6 +64,19 @@ export const useCartStore = create<CartState>()(
       subtotal: () => get().lines.reduce((sum, l) => sum + l.price * l.quantity, 0),
       totalQuantity: () => get().lines.reduce((sum, l) => sum + l.quantity, 0),
     }),
-    { name: "aneem-cart" },
+    {
+      name: "aneem-cart",
+      // Server has no localStorage, so SSR always renders an empty cart.
+      // Auto-hydrating on the client would make that first client render
+      // diverge from the server markup (React hydration error). Instead we
+      // skip hydration here and trigger it explicitly post-mount — see
+      // CartHydration in providers.tsx — so client and server agree on the
+      // very first paint, then the real cart appears a tick later.
+      skipHydration: true,
+      // Only cart contents should survive a reload — isDrawerOpen is UI
+      // state, not data, and persisting it would reopen the drawer on every
+      // fresh page load if it happened to be open when the tab last closed.
+      partialize: (state) => ({ lines: state.lines }),
+    },
   ),
 );
