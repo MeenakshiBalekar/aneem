@@ -54,3 +54,40 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
 
   return NextResponse.json(product);
 }
+
+/** Blocked when the product has real order history (OrderItem has no
+ * cascade — that's intentional, order records must never silently lose
+ * their line items). Cart/bundle references aren't a data-loss concern so
+ * those are cleared first; everything else (variants, images, cost,
+ * wishlist entries, marketing assets) cascades via the schema. */
+export async function DELETE(_req: Request, { params }: { params: Promise<{ productId: string }> }) {
+  const session = await getFounderSession();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!verifyCsrfToken(_req)) return csrfRejectedResponse();
+
+  const { productId } = await params;
+  const product = await prisma.product.findUnique({ where: { id: productId }, select: { id: true, title: true } });
+  if (!product) return NextResponse.json({ error: "Product not found" }, { status: 404 });
+
+  const orderCount = await prisma.orderItem.count({ where: { productId } });
+  if (orderCount > 0) {
+    return NextResponse.json(
+      { error: `Can't delete — ${orderCount} order(s) reference this product. Unassign its category instead to hide it from the storefront.` },
+      { status: 409 },
+    );
+  }
+
+  await prisma.cartItem.deleteMany({ where: { productId } });
+  await prisma.bundleItem.deleteMany({ where: { productId } });
+  await prisma.product.delete({ where: { id: productId } });
+
+  await logFounderAction({
+    founderUserId: session.user.id,
+    action: "product.deleted",
+    entityType: "Product",
+    entityId: productId,
+    metadata: { title: product.title },
+  });
+
+  return NextResponse.json({ ok: true });
+}

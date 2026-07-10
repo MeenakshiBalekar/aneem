@@ -4,9 +4,17 @@ import { slugify } from "@/lib/utils";
 import { getFounderSession } from "@/lib/founder/session";
 import { verifyCsrfToken, csrfRejectedResponse } from "@/lib/founder/csrf";
 import { logFounderAction } from "@/lib/founder/audit";
-import { parseCatalogWorkbook, resolveCategory, PARENT_CATEGORIES, type CatalogImportProductGroup } from "@/lib/founder/catalog-import";
+import {
+  parseCatalogWorkbook,
+  resolveCategory,
+  PARENT_CATEGORIES,
+  type CatalogImportProductGroup,
+  type CatalogImportRow,
+} from "@/lib/founder/catalog-import";
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
+const DEFAULT_CHUNK_SIZE = 20; // product groups per request — keeps each call well under a serverless timeout
+const VARIANT_BATCH_SIZE = 40; // upserts per $transaction call
 
 async function ensureUniqueSlug(baseSlug: string, qikinkProductId: string): Promise<string> {
   let slug = baseSlug;
@@ -19,77 +27,103 @@ async function ensureUniqueSlug(baseSlug: string, qikinkProductId: string): Prom
   }
 }
 
-/** Upserts one product-group (already-validated rows sharing a grouping
- * key) plus its variants. CSV/SKU-sheet imports don't carry stock
- * quantities (unlike a real Qikink sync payload) — a fresh variant is
- * created out-of-stock rather than guessing, and re-imports never touch an
- * existing variant's stock, so a later inventory sync/webhook stays the
- * one source of truth for that field. */
+/** Upserts variants in batched transactions instead of one round-trip per
+ * row — 2800 sequential awaits in a single request is what took down the
+ * founder portal the first time this ran (serverless timeout + the DB
+ * connection pool held open long enough to starve every other page). Each
+ * batch is one transaction call; a batch that fails (e.g. a genuine
+ * constraint collision) falls back to per-row so one bad SKU doesn't lose
+ * the other 39 in it. created-vs-updated is inferred from createdAt vs
+ * updatedAt instead of a separate findUnique per row. */
+async function upsertVariantsBatched(rows: CatalogImportRow[], productId: string) {
+  let created = 0;
+  let updated = 0;
+  const errors: { sku: string; error: string }[] = [];
+
+  function buildUpsert(row: CatalogImportRow) {
+    return prisma.productVariant.upsert({
+      where: { sku: row.sku },
+      update: {
+        size: row.size,
+        color: row.colorName || null,
+        price: row.basePrice,
+        weightGrams: row.shippingWeightGrams ?? undefined,
+      },
+      create: {
+        qikinkVariantId: `csv:${row.sku}`,
+        productId,
+        size: row.size,
+        color: row.colorName || null,
+        sku: row.sku,
+        price: row.basePrice,
+        stock: 0,
+        isOutOfStock: true,
+        weightGrams: row.shippingWeightGrams ?? undefined,
+      },
+    });
+  }
+
+  function tally(v: { createdAt: Date; updatedAt: Date }) {
+    if (v.createdAt.getTime() === v.updatedAt.getTime()) created += 1;
+    else updated += 1;
+  }
+
+  for (let i = 0; i < rows.length; i += VARIANT_BATCH_SIZE) {
+    const batch = rows.slice(i, i + VARIANT_BATCH_SIZE);
+    try {
+      const results = await prisma.$transaction(batch.map((row) => buildUpsert(row)));
+      results.forEach(tally);
+    } catch {
+      for (const row of batch) {
+        try {
+          tally(await buildUpsert(row));
+        } catch (err) {
+          errors.push({ sku: row.sku, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    }
+  }
+
+  return { created, updated, errors };
+}
+
 async function commitGroup(group: CatalogImportProductGroup, categoryIdByLeafSlug: Map<string, string>) {
   const qikinkProductId = `csv:${group.productKey}`;
   const { slug: leafSlug } = resolveCategory(group.genderName, group.categoryName);
   const categoryId = categoryIdByLeafSlug.get(leafSlug) ?? null;
-  const baseSlug = slugify(group.title) || slugify(group.productKey);
-  const slug = await ensureUniqueSlug(baseSlug, qikinkProductId);
 
-  const productExisted = (await prisma.product.findUnique({ where: { qikinkProductId }, select: { id: true } })) !== null;
+  const existingProduct = await prisma.product.findUnique({ where: { qikinkProductId }, select: { id: true } });
 
-  const product = await prisma.product.upsert({
-    where: { qikinkProductId },
-    update: {
-      title: group.title,
-      description: group.description,
-      categoryId,
-      basePrice: group.basePrice,
-      syncStatus: "SYNCED",
-      lastSyncedAt: new Date(),
-    },
-    create: {
-      qikinkProductId,
-      title: group.title,
-      slug,
-      description: group.description,
-      categoryId,
-      basePrice: group.basePrice,
-      isActive: true, // a founder-uploaded catalog sheet is an intentional publish, unlike a passive Qikink sync
-      syncStatus: "SYNCED",
-      lastSyncedAt: new Date(),
-    },
-  });
-
-  const variantErrors: { sku: string; error: string }[] = [];
-  let variantsCreated = 0;
-  let variantsUpdated = 0;
-
-  for (const row of group.rows) {
-    try {
-      const existing = await prisma.productVariant.findUnique({ where: { sku: row.sku }, select: { id: true } });
-      await prisma.productVariant.upsert({
-        where: { sku: row.sku },
-        update: {
-          size: row.size,
-          color: row.colorName || null,
-          price: row.basePrice,
-          weightGrams: row.shippingWeightGrams ?? undefined,
+  const product = existingProduct
+    ? await prisma.product.update({
+        where: { qikinkProductId },
+        data: {
+          title: group.title,
+          description: group.description,
+          categoryId,
+          basePrice: group.basePrice,
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date(),
         },
-        create: {
-          qikinkVariantId: `csv:${row.sku}`,
-          productId: product.id,
-          size: row.size,
-          color: row.colorName || null,
-          sku: row.sku,
-          price: row.basePrice,
-          stock: 0,
-          isOutOfStock: true,
-          weightGrams: row.shippingWeightGrams ?? undefined,
+      })
+    : await prisma.product.create({
+        data: {
+          qikinkProductId,
+          title: group.title,
+          slug: await ensureUniqueSlug(slugify(group.title) || slugify(group.productKey), qikinkProductId),
+          description: group.description,
+          categoryId,
+          basePrice: group.basePrice,
+          isActive: true, // a founder-uploaded catalog sheet is an intentional publish, unlike a passive Qikink sync
+          syncStatus: "SYNCED",
+          lastSyncedAt: new Date(),
         },
       });
-      if (existing) variantsUpdated += 1;
-      else variantsCreated += 1;
-    } catch (err) {
-      variantErrors.push({ sku: row.sku, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
+
+  const { created: variantsCreated, updated: variantsUpdated, errors: variantErrors } = await upsertVariantsBatched(
+    group.rows,
+    product.id,
+  );
 
   const taxRates = Array.from(new Set(group.rows.map((r) => r.taxRatePercent).filter((v): v is number => v !== null)));
   if (taxRates.length > 0) {
@@ -104,7 +138,7 @@ async function commitGroup(group: CatalogImportProductGroup, categoryIdByLeafSlu
   return {
     productId: product.id,
     title: product.title,
-    productCreated: !productExisted,
+    productCreated: !existingProduct,
     variantsCreated,
     variantsUpdated,
     variantErrors,
@@ -120,6 +154,8 @@ export async function POST(req: Request) {
   const formData = await req.formData();
   const file = formData.get("file");
   const dryRun = formData.get("dryRun") !== "false";
+  const offset = Math.max(0, Number(formData.get("offset") ?? 0) || 0);
+  const chunkSize = Math.max(1, Number(formData.get("chunkSize") ?? DEFAULT_CHUNK_SIZE) || DEFAULT_CHUNK_SIZE);
 
   if (!(file instanceof File)) return NextResponse.json({ error: "No file provided" }, { status: 400 });
   if (file.size === 0) return NextResponse.json({ error: "File is empty" }, { status: 400 });
@@ -161,11 +197,17 @@ export async function POST(req: Request) {
     });
   }
 
-  // Ensure every parent + leaf category the sheet references exists before
-  // touching any product — same upsert-by-slug pattern as prisma/seed.ts,
-  // so this works whether or not the seed script has ever been run.
+  // Only this chunk's product groups — committing the whole file in one
+  // request is what caused the outage (thousands of sequential DB round
+  // trips in a single serverless invocation). The client drives the loop,
+  // calling this endpoint repeatedly with an increasing offset.
+  const chunkGroups = parsed.groups.slice(offset, offset + chunkSize);
+  if (chunkGroups.length === 0) {
+    return NextResponse.json({ error: `offset ${offset} is past the end of ${parsed.groups.length} products` }, { status: 400 });
+  }
+
   const leafCategories = new Map<string, ReturnType<typeof resolveCategory>>();
-  for (const group of parsed.groups) {
+  for (const group of chunkGroups) {
     const resolved = resolveCategory(group.genderName, group.categoryName);
     if (!leafCategories.has(resolved.slug)) leafCategories.set(resolved.slug, resolved);
   }
@@ -193,7 +235,7 @@ export async function POST(req: Request) {
   }
 
   const results = [];
-  for (const group of parsed.groups) {
+  for (const group of chunkGroups) {
     results.push(await commitGroup(group, categoryIdByLeafSlug));
   }
 
@@ -201,32 +243,77 @@ export async function POST(req: Request) {
   const variantsCreated = results.reduce((sum, r) => sum + r.variantsCreated, 0);
   const variantsUpdated = results.reduce((sum, r) => sum + r.variantsUpdated, 0);
   const variantErrors = results.flatMap((r) => r.variantErrors.map((e) => ({ ...e, product: r.title })));
-  const itemsFailed = variantErrors.length + parsed.rowErrors.length;
+  const itemsFailed = variantErrors.length;
+  const nextOffset = offset + chunkGroups.length;
+  const done = nextOffset >= parsed.groups.length;
 
-  await prisma.syncLog.create({
-    data: {
-      jobType: "CATALOG_IMPORT",
-      status: itemsFailed === 0 ? "SUCCESS" : variantsCreated + variantsUpdated > 0 ? "PARTIAL" : "FAILED",
-      itemsSynced: variantsCreated + variantsUpdated,
-      itemsFailed,
-      errorMessage: itemsFailed > 0 ? `${itemsFailed} rows failed to import` : undefined,
-      finishedAt: new Date(),
-    },
-  });
-
-  await logFounderAction({
-    founderUserId: session.user.id,
-    action: "catalog.csv_imported",
-    metadata: { fileName: file.name, productCount: results.length, variantsCreated, variantsUpdated, itemsFailed },
-  });
+  if (done) {
+    await prisma.syncLog.create({
+      data: {
+        jobType: "CATALOG_IMPORT",
+        status: parsed.rowErrors.length === 0 && itemsFailed === 0 ? "SUCCESS" : "PARTIAL",
+        itemsSynced: parsed.groups.reduce((sum, g) => sum + g.rows.length, 0),
+        itemsFailed: parsed.rowErrors.length,
+        errorMessage: parsed.rowErrors.length > 0 ? `${parsed.rowErrors.length} rows skipped during parsing` : undefined,
+        finishedAt: new Date(),
+      },
+    });
+    await logFounderAction({
+      founderUserId: session.user.id,
+      action: "catalog.csv_imported",
+      metadata: { fileName: file.name, totalProducts: parsed.groups.length },
+    });
+  }
 
   return NextResponse.json({
     dryRun: false,
+    done,
+    nextOffset,
+    totalGroups: parsed.groups.length,
     productCount: results.length,
     productsCreated,
     variantsCreated,
     variantsUpdated,
     variantErrors: variantErrors.slice(0, 100),
     rowErrorCount: parsed.rowErrors.length,
+  });
+}
+
+/** Undo a CSV import — every product it creates is tagged `csv:<key>` as
+ * its qikinkProductId (see commitGroup above), so this just wipes anything
+ * with that prefix rather than needing to track import batches. Products
+ * with real order history are skipped rather than deleted (OrderItem has
+ * no cascade on purpose); everything else is safe to remove outright since
+ * a bad CSV import is by definition data nobody has bought yet. */
+export async function DELETE(req: Request) {
+  const session = await getFounderSession();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!verifyCsrfToken(req)) return csrfRejectedResponse();
+
+  const candidates = await prisma.product.findMany({
+    where: { qikinkProductId: { startsWith: "csv:" } },
+    select: { id: true, title: true, _count: { select: { orderItems: true } } },
+  });
+
+  const deletable = candidates.filter((p) => p._count.orderItems === 0);
+  const blocked = candidates.filter((p) => p._count.orderItems > 0);
+  const deletableIds = deletable.map((p) => p.id);
+
+  if (deletableIds.length > 0) {
+    await prisma.cartItem.deleteMany({ where: { productId: { in: deletableIds } } });
+    await prisma.bundleItem.deleteMany({ where: { productId: { in: deletableIds } } });
+    await prisma.product.deleteMany({ where: { id: { in: deletableIds } } });
+  }
+
+  await logFounderAction({
+    founderUserId: session.user.id,
+    action: "catalog.csv_import_deleted",
+    metadata: { deletedCount: deletable.length, blockedCount: blocked.length },
+  });
+
+  return NextResponse.json({
+    deletedCount: deletable.length,
+    blockedCount: blocked.length,
+    blocked: blocked.map((p) => ({ title: p.title })),
   });
 }

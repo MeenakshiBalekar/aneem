@@ -4,6 +4,7 @@ import { ProductFilterBar } from "@/components/founder/product-filter-bar";
 import { ProductCategorizerTable } from "@/components/founder/product-categorizer-table";
 import { FounderSyncButton } from "@/components/founder/founder-sync-button";
 import { CatalogImportDialog } from "@/components/founder/catalog-import-dialog";
+import { UndoCsvImportButton } from "@/components/founder/undo-csv-import-button";
 
 export const metadata = { title: "Products" };
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export default async function FounderProductsPage({
         <div className="flex items-center gap-2">
           <CatalogImportDialog />
           <FounderSyncButton />
+          <UndoCsvImportButton />
         </div>
       </div>
 
