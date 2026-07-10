@@ -29,6 +29,9 @@ interface PreviewResult {
 
 interface CommitResult {
   dryRun: false;
+  done: boolean;
+  nextOffset: number;
+  totalGroups: number;
   productCount: number;
   productsCreated: number;
   variantsCreated: number;
@@ -36,6 +39,8 @@ interface CommitResult {
   variantErrors: { sku: string; error: string; product: string }[];
   rowErrorCount: number;
 }
+
+const CHUNK_SIZE = 20; // product groups per request — matches the server's expectation, keeps each call fast
 
 /** Qikink has no products API — the real catalog comes in from a founder-
  * exported SKU sheet instead (see .env.example / src/lib/qikink/client.ts).
@@ -47,6 +52,7 @@ export function CatalogImportDialog() {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -54,6 +60,7 @@ export function CatalogImportDialog() {
     setFile(null);
     setPreview(null);
     setBusy(false);
+    setProgress(null);
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -83,24 +90,46 @@ export function CatalogImportDialog() {
   async function commitImport() {
     if (!file) return;
     setBusy(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("dryRun", "false");
+    setProgress({ done: 0, total: preview?.productCount ?? 0 });
 
-    const res = await founderFetch("/api/founder/products/import", { method: "POST", body: formData });
-    const data = (await res.json()) as CommitResult & { error?: string };
-    setBusy(false);
+    let offset = 0;
+    let totalProductsCreated = 0;
+    let totalVariantsCreated = 0;
+    let totalVariantsUpdated = 0;
+    let totalErrors = 0;
 
-    if (!res.ok) {
-      toast.error(data.error ?? "Import failed");
-      return;
+    for (;;) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("dryRun", "false");
+      formData.append("offset", String(offset));
+      formData.append("chunkSize", String(CHUNK_SIZE));
+
+      const res = await founderFetch("/api/founder/products/import", { method: "POST", body: formData });
+      const data = (await res.json()) as CommitResult & { error?: string };
+
+      if (!res.ok) {
+        setBusy(false);
+        toast.error(data.error ?? `Import failed after ${offset} products — safe to retry, already-imported ones are untouched`);
+        return;
+      }
+
+      totalProductsCreated += data.productsCreated;
+      totalVariantsCreated += data.variantsCreated;
+      totalVariantsUpdated += data.variantsUpdated;
+      totalErrors += data.variantErrors.length + data.rowErrorCount;
+      setProgress({ done: data.nextOffset, total: data.totalGroups });
+
+      if (data.done) break;
+      offset = data.nextOffset;
     }
 
+    setBusy(false);
     toast.success(
-      `Imported ${data.productCount} products (${data.productsCreated} new) — ${data.variantsCreated} new SKUs, ${data.variantsUpdated} updated`,
+      `Imported ${totalProductsCreated} new products, ${totalVariantsCreated} new SKUs, ${totalVariantsUpdated} updated`,
     );
-    if (data.variantErrors.length > 0 || data.rowErrorCount > 0) {
-      toast.error(`${data.variantErrors.length + data.rowErrorCount} rows had problems — see server logs`);
+    if (totalErrors > 0) {
+      toast.error(`${totalErrors} rows had problems — see server logs`);
     }
     close();
     router.refresh();
@@ -215,6 +244,20 @@ export function CatalogImportDialog() {
                     </p>
                   )}
                 </div>
+
+                {busy && progress && (
+                  <div className="space-y-1">
+                    <div className="h-1.5 w-full overflow-hidden bg-white/10">
+                      <div
+                        className="h-full bg-white transition-all"
+                        style={{ width: `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-white/50">
+                      Importing {progress.done} / {progress.total} products…
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2">
                   <button
