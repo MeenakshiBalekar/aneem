@@ -19,6 +19,9 @@ export async function pushOrderToQikink(orderId: string) {
 
   const payload: QikinkCreateOrderPayload = {
     order_number: order.orderNumber,
+    qikink_shipping: "1", // Qikink handles shipment — we don't self-ship
+    gateway: order.paymentMethod === "COD" ? "COD" : "Prepaid",
+    total_order_value: String(order.total),
     line_items: order.items.map((item) => ({
       sku: item.variant.sku,
       quantity: item.quantity,
@@ -34,8 +37,6 @@ export async function pushOrderToQikink(orderId: string) {
       pincode: order.address.pincode,
       country: order.address.country,
     },
-    payment_status: order.paymentMethod === "COD" ? "cod" : "prepaid",
-    total_order_value: Number(order.total),
   };
 
   try {

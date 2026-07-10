@@ -1,9 +1,14 @@
-// Shapes mirror Qikink's documented Product/Order/Fulfillment API contracts.
-// Keeping these separate from our Prisma models means a Qikink API change
-// only touches the mapper in sync.ts, not the rest of the app.
-
+// Shapes mirror Qikink's documented Order/Fulfillment API contracts
+// (documenter.getpostman.com/view/26157218/2sB3QKqpma — "QIKINK API COPY").
+// Confirmed against the real docs: POST /token (form-urlencoded) -> this
+// shape; then ClientId + Accesstoken as headers on every other call.
+// Qikink has no products/catalog API at all — the Postman collection only
+// has Authorization and Orders folders. See mock-data.ts and sync.ts for
+// how that's handled (fixtures locally; real catalog data has to come from
+// a CSV export, not a sync).
 export interface QikinkAuthToken {
-  access_token: string;
+  ClientId: string;
+  Accesstoken: string;
   expires_in: number;
 }
 
@@ -45,10 +50,19 @@ export interface QikinkOrderLineItem {
   price: number;
 }
 
+/** Confirmed top-level fields from the real "Create Order" doc
+ * (POST /order/create). NOTE: line_items and shipping_address sub-field
+ * shapes below are still our best-guess placeholder, pending the full
+ * expanded example from the docs — verify before relying on them in
+ * production. total_order_value/qikink_shipping are sent as strings in
+ * Qikink's own example despite being described as "Numeric". */
 export interface QikinkCreateOrderPayload {
-  order_number: string; // our order number, used as idempotency key
+  order_number: string; // unique, never reused — our order number as idempotency key
+  qikink_shipping: "0" | "1"; // 0 = self-ship, 1 = Qikink handles shipment
+  gateway: "COD" | "Prepaid";
+  total_order_value: string;
   line_items: QikinkOrderLineItem[];
-  shipping_address: {
+  shipping_address?: {
     name: string;
     phone: string;
     address_line1: string;
@@ -58,8 +72,6 @@ export interface QikinkCreateOrderPayload {
     pincode: string;
     country: string;
   };
-  payment_status: "prepaid" | "cod";
-  total_order_value: number;
 }
 
 export interface QikinkCreateOrderResponse {
