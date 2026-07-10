@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { Instagram } from "lucide-react";
+import { InstagramIcon } from "@/components/icons/social";
 import { SectionHeading } from "@/components/ui/section-heading";
 
 // Static fixture until the Instagram Graph API is wired (see docs/FUTURE_INTEGRATIONS.md) —
@@ -24,7 +24,7 @@ export function InstagramFeed() {
           >
             <Image src={post.imageUrl} alt="Aneem on Instagram" fill sizes="200px" className="object-cover" />
             <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/40 group-hover:opacity-100">
-              <Instagram className="text-white" size={22} />
+              <InstagramIcon className="text-white" size={22} />
             </div>
           </a>
         ))}

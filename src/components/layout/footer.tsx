@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Instagram, Facebook, Youtube } from "lucide-react";
+import { InstagramIcon, FacebookIcon, YoutubeIcon } from "@/components/icons/social";
 import { NewsletterForm } from "@/components/home/newsletter";
 
 export function Footer() {
@@ -14,13 +14,13 @@ export function Footer() {
           </p>
           <div className="mt-6 flex gap-4">
             <a href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram">
-              <Instagram size={20} />
+              <InstagramIcon size={20} />
             </a>
             <a href="https://facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook">
-              <Facebook size={20} />
+              <FacebookIcon size={20} />
             </a>
             <a href="https://youtube.com" target="_blank" rel="noreferrer" aria-label="YouTube">
-              <Youtube size={20} />
+              <YoutubeIcon size={20} />
             </a>
           </div>
         </div>
