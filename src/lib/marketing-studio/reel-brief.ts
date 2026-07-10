@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { callClaudeJSON, isAIConfigured } from "./claude";
-import { getProductContext, BRAND_VOICE } from "./context";
+import { getProductContext } from "./context";
 import type { ReelScene, MusicSuggestion } from "./types";
 import type { ReelVoiceOption } from "@prisma/client";
 

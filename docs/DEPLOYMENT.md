@@ -169,6 +169,25 @@ setup.
    generator): set `ANTHROPIC_API_KEY`. Without it, these fall back to
    deterministic templates built from the same live data — still useful,
    just not AI-generated.
+8. **AI Marketing Studio** (`/founder/marketing-studio`) — the product
+   content/creative engine (captions, hashtags, carousels, stories,
+   descriptions, ad/WhatsApp/email copy, reel briefs, offers, bundle
+   creative, thumbnails, image enhancement):
+   - `ANTHROPIC_API_KEY` (same key as above) drives every text and vision
+     generator. Unset it and the Studio still fully works, just with
+     realistic mock output instead of real AI copy.
+   - `BLOB_READ_WRITE_TOKEN` (Vercel → Storage → create a Blob store →
+     copy the token) is required for the product photo uploader — there's
+     no mock fallback for file storage itself.
+   - `VIDEO_RENDER_API_KEY` / `VIDEO_RENDER_API_BASE_URL` are optional —
+     point them at a hosted video-assembly API (Creatomate, Shotstack,
+     JSON2Video). Without them, the Reel Generator still produces a full
+     real shot-by-shot creative brief via Claude; it just won't render an
+     actual MP4 (Vercel serverless can't run FFmpeg or hold render state).
+   - `IMAGE_API_KEY` / `IMAGE_API_BASE_URL` are optional — point them at a
+     hosted image generation/enhancement API. Without them, enhancement
+     operations are recorded but return the original source image
+     (`isMock: true`) instead of a new render.
 
 ## Post-deploy checklist
 
