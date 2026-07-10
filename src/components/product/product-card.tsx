@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import { Heart } from "lucide-react";
+import toast from "react-hot-toast";
 import { Price } from "@/components/ui/price";
 import { RatingStars } from "@/components/ui/rating-stars";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +55,16 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
           <button
             aria-label="Add to wishlist"
             className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center bg-white/90 opacity-0 transition-opacity group-hover:opacity-100"
-            onClick={(e) => e.preventDefault()}
+            onClick={async (e) => {
+              e.preventDefault();
+              const res = await fetch("/api/wishlist", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ productId: product.id }),
+              });
+              if (res.status === 401) toast.error("Sign in to save items");
+              else if (res.ok) toast.success("Saved to wishlist");
+            }}
           >
             <Heart size={16} />
           </button>
