@@ -96,7 +96,7 @@ export const qikinkClient = {
    * a best guess pending the full example from the docs. */
   async createOrder(payload: QikinkCreateOrderPayload): Promise<QikinkCreateOrderResponse> {
     if (isMockConfigured()) {
-      return { order_id: `qk_order_${payload.order_number}`, status: "received" };
+      return { message: "Order created successfully", order_id: Date.now(), status_code: "200" };
     }
     return qikinkFetch<QikinkCreateOrderResponse>("/order/create", {
       method: "POST",

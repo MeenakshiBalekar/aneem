@@ -12,10 +12,12 @@ import type { QikinkCreateOrderPayload } from "./types";
 export async function pushOrderToQikink(orderId: string) {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { items: { include: { variant: true } }, address: true },
+    include: { items: { include: { variant: true } }, address: true, user: { select: { email: true } } },
   });
 
   if (order.qikinkOrderId) return order; // already pushed — idempotent
+
+  const [firstName, ...rest] = order.address.fullName.trim().split(/\s+/);
 
   const payload: QikinkCreateOrderPayload = {
     order_number: order.orderNumber,
@@ -23,19 +25,22 @@ export async function pushOrderToQikink(orderId: string) {
     gateway: order.paymentMethod === "COD" ? "COD" : "Prepaid",
     total_order_value: String(order.total),
     line_items: order.items.map((item) => ({
+      search_from_my_products: 1, // our catalog is already pushed/designed in Qikink
       sku: item.variant.sku,
-      quantity: item.quantity,
-      price: Number(item.unitPrice),
+      quantity: String(item.quantity),
+      price: String(item.unitPrice),
     })),
     shipping_address: {
-      name: order.address.fullName,
+      first_name: firstName,
+      last_name: rest.join(" ") || undefined,
+      address1: order.address.line1,
+      address2: order.address.line2 ?? undefined,
       phone: order.address.phone,
-      address_line1: order.address.line1,
-      address_line2: order.address.line2 ?? undefined,
+      email: order.user.email,
       city: order.address.city,
-      state: order.address.state,
-      pincode: order.address.pincode,
-      country: order.address.country,
+      zip: order.address.pincode,
+      province: order.address.state,
+      country_code: "IN", // storefront is India-only; Address.country is a free-text label, not an ISO code
     },
   };
 
@@ -43,7 +48,7 @@ export async function pushOrderToQikink(orderId: string) {
     const result = await qikinkClient.createOrder(payload);
     return prisma.order.update({
       where: { id: order.id },
-      data: { qikinkOrderId: result.order_id, status: "SENT_TO_QIKINK" },
+      data: { qikinkOrderId: String(result.order_id), status: "SENT_TO_QIKINK" },
     });
   } catch (err) {
     await prisma.syncLog.create({
