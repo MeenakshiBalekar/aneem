@@ -1,0 +1,459 @@
+// Aneem — Premium Streetwear Platform
+// Prisma schema: source of truth for the commerce domain model.
+// Postgres in prod (Vercel Postgres / Supabase / Neon / Railway all work as-is).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+// Top-level shop sections. Kept data-driven (not hardcoded routes) so new
+// categories (e.g. "Track Pants") can be added from the admin without a
+// code deploy.
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  imageUrl    String?
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+  sortOrder   Int        @default(0)
+  isActive    Boolean    @default(true)
+  products    Product[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([parentId])
+}
+
+enum SyncStatus {
+  SYNCED
+  PENDING
+  ERROR
+}
+
+// A product is the shared "shell" (title, description, images, category).
+// Qikink is the system of record — everything here is mirrored from a
+// Qikink product via `qikinkProductId` and kept fresh by the sync service.
+model Product {
+  id               String        @id @default(cuid())
+  qikinkProductId  String        @unique
+  title            String
+  slug             String        @unique
+  description      String        @db.Text
+  fabricDetails    String?       @db.Text
+  washCare         String?       @db.Text
+  categoryId       String
+  category         Category      @relation(fields: [categoryId], references: [id])
+  tags             String[]      @default([])
+  images           ProductImage[]
+  videoUrl         String?
+  variants         ProductVariant[]
+  basePrice        Decimal       @db.Decimal(10, 2)
+  compareAtPrice   Decimal?      @db.Decimal(10, 2)
+  isActive         Boolean       @default(true)
+  isBestSeller     Boolean       @default(false)
+  isNewArrival     Boolean       @default(false)
+  isTrending       Boolean       @default(false)
+  avgRating        Float         @default(0)
+  reviewCount      Int           @default(0)
+  syncStatus       SyncStatus    @default(PENDING)
+  lastSyncedAt     DateTime?
+  seoTitle         String?
+  seoDescription   String?
+  reviews          Review[]
+  orderItems       OrderItem[]
+  cartItems        CartItem[]
+  wishlistItems    WishlistItem[]
+  bundleItems      BundleItem[]
+  crossSellFrom    ProductRelation[] @relation("SourceProduct")
+  crossSellTo      ProductRelation[] @relation("RelatedProduct")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([categoryId])
+  @@index([isBestSeller])
+  @@index([isNewArrival])
+  @@index([isTrending])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  altText   String?
+  sortOrder Int     @default(0)
+  isLifestyle Boolean @default(false)
+
+  @@index([productId])
+}
+
+// Size x Color combination — this is what Qikink tracks stock/price against.
+model ProductVariant {
+  id                String      @id @default(cuid())
+  qikinkVariantId   String      @unique
+  productId         String
+  product           Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size              String
+  color             String?
+  sku               String      @unique
+  price             Decimal     @db.Decimal(10, 2)
+  compareAtPrice    Decimal?    @db.Decimal(10, 2)
+  stock             Int         @default(0)
+  isOutOfStock      Boolean     @default(false)
+  weightGrams       Int?
+  orderItems        OrderItem[]
+  cartItems         CartItem[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([productId, size, color])
+  @@index([productId])
+}
+
+enum RelationType {
+  CROSS_SELL
+  UPSELL
+  FREQUENTLY_BOUGHT_TOGETHER
+  COMPLETE_THE_OUTFIT
+}
+
+model ProductRelation {
+  id           String       @id @default(cuid())
+  sourceId     String
+  source       Product      @relation("SourceProduct", fields: [sourceId], references: [id], onDelete: Cascade)
+  relatedId    String
+  related      Product      @relation("RelatedProduct", fields: [relatedId], references: [id], onDelete: Cascade)
+  type         RelationType
+  sortOrder    Int          @default(0)
+
+  @@unique([sourceId, relatedId, type])
+  @@index([sourceId])
+}
+
+// ---------------------------------------------------------------------------
+// Bundles — the AOV lever. Configurable from admin, no code changes needed
+// to launch "Starter Kit", "Travel Kit", etc.
+// ---------------------------------------------------------------------------
+
+model Bundle {
+  id              String       @id @default(cuid())
+  name            String
+  slug            String       @unique
+  description     String?
+  imageUrl        String?
+  discountPercent Decimal      @db.Decimal(5, 2)
+  items           BundleItem[]
+  isActive        Boolean      @default(true)
+  sortOrder       Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model BundleItem {
+  id        String  @id @default(cuid())
+  bundleId  String
+  bundle    Bundle  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int     @default(1)
+  isOptional Boolean @default(false)
+
+  @@index([bundleId])
+}
+
+// ---------------------------------------------------------------------------
+// Discount engine — configurable rules instead of hardcoded checkout logic.
+// ---------------------------------------------------------------------------
+
+enum DiscountType {
+  QUANTITY_BREAK      // e.g. buy 2 -> 10%, buy 3 -> 15%
+  BUNDLE               // tied to a Bundle
+  FREE_SHIPPING_THRESHOLD
+  COUPON                // code-based, customer-entered
+  LIMITED_TIME
+}
+
+enum DiscountValueType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+}
+
+model DiscountRule {
+  id            String            @id @default(cuid())
+  name          String
+  type          DiscountType
+  valueType     DiscountValueType
+  value         Decimal           @db.Decimal(10, 2)
+  code          String?           @unique // for COUPON type
+  minQuantity   Int?              // for QUANTITY_BREAK
+  minAmount     Decimal?          @db.Decimal(10, 2) // for FREE_SHIPPING_THRESHOLD / min-cart coupons
+  appliesToCategoryId String?
+  startsAt      DateTime?
+  endsAt        DateTime?
+  isActive      Boolean           @default(true)
+  usageLimit    Int?
+  usageCount    Int               @default(0)
+  stackable     Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Customers, auth, engagement
+// ---------------------------------------------------------------------------
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+model User {
+  id             String        @id @default(cuid())
+  name           String?
+  email          String        @unique
+  emailVerified  DateTime?
+  phone          String?
+  passwordHash   String?
+  image          String?
+  role           Role          @default(CUSTOMER)
+  loyaltyPoints  Int           @default(0)
+  referralCode   String?       @unique
+  referredById   String?
+  addresses      Address[]
+  orders         Order[]
+  cart           Cart?
+  wishlist       WishlistItem[]
+  reviews        Review[]
+  accounts       Account[]
+  sessions       Session[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+// NextAuth models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName   String
+  phone      String
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  pincode    String
+  country    String   @default("India")
+  isDefault  Boolean  @default(false)
+  orders     Order[]
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  rating     Int
+  title      String?
+  body       String?  @db.Text
+  imageUrls  String[] @default([])
+  isVerifiedPurchase Boolean @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Cart
+// ---------------------------------------------------------------------------
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String?    @unique
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String?    @unique // guest cart, keyed by cookie
+  items     CartItem[]
+  couponCode String?
+  giftWrap  Boolean    @default(false)
+  giftNote  String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  cartId    String
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product        @relation(fields: [productId], references: [id])
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+  quantity  Int            @default(1)
+  createdAt DateTime       @default(now())
+
+  @@unique([cartId, variantId])
+}
+
+// ---------------------------------------------------------------------------
+// Orders — the automation backbone. Everything downstream (Qikink
+// fulfillment, Razorpay payment, WhatsApp/email notifications) hangs off
+// status transitions on this model.
+// ---------------------------------------------------------------------------
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  COD_CONFIRMED
+  SENT_TO_QIKINK
+  IN_PRODUCTION
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  PAYMENT_FAILED
+  RETURN_REQUESTED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  RAZORPAY
+  COD
+}
+
+model Order {
+  id                String        @id @default(cuid())
+  orderNumber       String        @unique // human-friendly, e.g. ANEEM-100234
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  addressId         String
+  address           Address       @relation(fields: [addressId], references: [id])
+  items             OrderItem[]
+  subtotal          Decimal       @db.Decimal(10, 2)
+  discountAmount    Decimal       @db.Decimal(10, 2) @default(0)
+  shippingAmount    Decimal       @db.Decimal(10, 2) @default(0)
+  codFee            Decimal       @db.Decimal(10, 2) @default(0)
+  total             Decimal       @db.Decimal(10, 2)
+  appliedDiscountCode String?
+  status            OrderStatus   @default(PENDING_PAYMENT)
+  paymentMethod     PaymentMethod
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  qikinkOrderId     String?
+  trackingNumber    String?
+  trackingUrl       String?
+  courierName       String?
+  invoiceUrl        String?
+  notifiedShipped   Boolean       @default(false)
+  notifiedDelivered Boolean       @default(false)
+  cancelReason      String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([qikinkOrderId])
+}
+
+model OrderItem {
+  id          String         @id @default(cuid())
+  orderId     String
+  order       Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product        @relation(fields: [productId], references: [id])
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  quantity    Int
+  unitPrice   Decimal        @db.Decimal(10, 2)
+  totalPrice  Decimal        @db.Decimal(10, 2)
+
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Sync / integration observability
+// ---------------------------------------------------------------------------
+
+enum SyncJobType {
+  PRODUCT_SYNC
+  INVENTORY_SYNC
+  ORDER_PUSH
+  FULFILLMENT_PULL
+}
+
+enum SyncJobStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+model SyncLog {
+  id            String        @id @default(cuid())
+  jobType       SyncJobType
+  status        SyncJobStatus
+  itemsSynced   Int           @default(0)
+  itemsFailed   Int           @default(0)
+  errorMessage  String?       @db.Text
+  startedAt     DateTime      @default(now())
+  finishedAt    DateTime?
+}
