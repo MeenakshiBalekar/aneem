@@ -46,6 +46,24 @@ export async function getFilteredProducts(filters: ProductCatalogFilters, opts: 
   return { products, total, page, pageSize: PAGE_SIZE, uncategorizedCount };
 }
 
+export interface ImageAssignmentProduct {
+  id: string;
+  title: string;
+  qikinkProductId: string;
+  imageCount: number;
+}
+
+/** Lightweight full product list (no pagination) for the bulk image
+ * uploader's search-and-assign picker — needs every product to search
+ * against, not just one page of the categorizer table. */
+export async function getProductsForImageAssignment(): Promise<ImageAssignmentProduct[]> {
+  const products = await prisma.product.findMany({
+    select: { id: true, title: true, qikinkProductId: true, _count: { select: { images: true } } },
+    orderBy: { title: "asc" },
+  });
+  return products.map((p) => ({ id: p.id, title: p.title, qikinkProductId: p.qikinkProductId, imageCount: p._count.images }));
+}
+
 export interface CategoryTreeOption {
   id: string;
   name: string;
