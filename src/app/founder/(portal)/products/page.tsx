@@ -1,10 +1,11 @@
 import { Suspense } from "react";
-import { getFilteredProducts, getCategoryTree } from "@/lib/founder/product-catalog";
+import { getFilteredProducts, getCategoryTree, getProductsForImageAssignment } from "@/lib/founder/product-catalog";
 import { ProductFilterBar } from "@/components/founder/product-filter-bar";
 import { ProductCategorizerTable } from "@/components/founder/product-categorizer-table";
 import { FounderSyncButton } from "@/components/founder/founder-sync-button";
 import { CatalogImportDialog } from "@/components/founder/catalog-import-dialog";
 import { UndoCsvImportButton } from "@/components/founder/undo-csv-import-button";
+import { BulkImageUploadDialog } from "@/components/founder/bulk-image-upload-dialog";
 
 export const metadata = { title: "Products" };
 export const dynamic = "force-dynamic";
@@ -18,9 +19,10 @@ export default async function FounderProductsPage({
   const page = Number(sp.page) || 1;
   const filters = { search: sp.search || undefined, uncategorized: sp.uncategorized === "1" };
 
-  const [{ products, total, pageSize, uncategorizedCount }, categoryTree] = await Promise.all([
+  const [{ products, total, pageSize, uncategorizedCount }, categoryTree, imageAssignmentProducts] = await Promise.all([
     getFilteredProducts(filters, { page }),
     getCategoryTree(),
+    getProductsForImageAssignment(),
   ]);
   const totalPages = Math.ceil(total / pageSize);
 
@@ -35,6 +37,7 @@ export default async function FounderProductsPage({
         </div>
         <div className="flex items-center gap-2">
           <CatalogImportDialog />
+          <BulkImageUploadDialog products={imageAssignmentProducts} />
           <FounderSyncButton />
           <UndoCsvImportButton />
         </div>
