@@ -225,7 +225,16 @@ export function AddProductForm({
       return;
     }
     toast.success(`"${title}" created with ${variants.length} SKUs`);
-    if (result.imageWarnings?.length) toast.error(result.imageWarnings.join(" · "));
+    if (result.imageWarnings?.length) {
+      // Give this one time to actually be read — an immediate route change
+      // right after can cut a normal-duration toast off before it lands.
+      toast.error(result.imageWarnings.join(" · "), { duration: 8000 });
+      setTimeout(() => {
+        router.push("/founder/products");
+        router.refresh();
+      }, 2500);
+      return;
+    }
     router.push("/founder/products");
     router.refresh();
   }

@@ -125,10 +125,18 @@ export async function POST(req: Request) {
           imageWarnings.push(`${color} ${angle}: over 10MB, skipped`);
           continue;
         }
-        const url = await uploadAsset(file, `products/${product.id}`);
-        await prisma.productImage.create({
-          data: { productId: product.id, url, color, sortOrder: sortOrder++, isLifestyle: false },
-        });
+        try {
+          const url = await uploadAsset(file, `products/${product.id}`);
+          await prisma.productImage.create({
+            data: { productId: product.id, url, color, sortOrder: sortOrder++, isLifestyle: false },
+          });
+        } catch (err) {
+          // The product + variants already exist at this point — a storage
+          // hiccup on one photo (bad token, transient network error, quota)
+          // must not take down the whole request and leave the founder
+          // wondering whether the product was even created.
+          imageWarnings.push(`${color} ${angle}: upload failed (${err instanceof Error ? err.message : String(err)})`);
+        }
       }
     }
   }
