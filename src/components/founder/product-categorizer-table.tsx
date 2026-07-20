@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { X, Check, Trash2 } from "lucide-react";
@@ -103,15 +104,15 @@ function ProductRow({ product, categoryTree }: { product: CatalogRow; categoryTr
   return (
     <tr className="border-b border-white/10">
       <td className="p-2">
-        <div className="flex items-center gap-2">
+        <Link href={`/founder/products/${product.id}`} className="flex items-center gap-2 hover:opacity-80">
           <div className="relative h-10 w-8 shrink-0 overflow-hidden border border-white/10 bg-white/5">
             {product.images[0] && <Image src={product.images[0].url} alt={product.title} fill sizes="32px" className="object-cover" />}
           </div>
           <div>
-            <p className="line-clamp-1 max-w-[220px] text-xs font-semibold">{product.title}</p>
+            <p className="line-clamp-1 max-w-[220px] text-xs font-semibold underline-offset-2 hover:underline">{product.title}</p>
             <p className="text-[10px] text-white/30">Qikink #{product.qikinkProductId}</p>
           </div>
-        </div>
+        </Link>
       </td>
       <td className="p-2">
         <select
