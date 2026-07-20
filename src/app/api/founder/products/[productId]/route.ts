@@ -5,15 +5,20 @@ import { getFounderSession } from "@/lib/founder/session";
 import { verifyCsrfToken, csrfRejectedResponse } from "@/lib/founder/csrf";
 import { logFounderAction } from "@/lib/founder/audit";
 
+// All fields optional so this handles both the quick inline categorize
+// (the products table sends just { categoryId, tags }) and the full
+// product edit page (title/description/pricing/status/etc). Only provided
+// fields are touched.
 const schema = z.object({
-  categoryId: z.string().nullable(),
-  tags: z.array(z.string().trim().min(1).max(40)).max(30),
+  categoryId: z.string().nullable().optional(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
+  title: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(8000).optional(),
+  basePrice: z.number().positive().optional(),
+  compareAtPrice: z.number().positive().nullable().optional(),
+  isActive: z.boolean().optional(),
 });
 
-/** Assigns a category and/or tags to a synced product — this is the only
- * thing that can turn on isActive for a product that came in from Qikink
- * ("hidden until tagged"), so it recomputes isActive the same way the sync
- * does: category assigned AND at least one variant in stock. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ productId: string }> }) {
   const session = await getFounderSession();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -22,10 +27,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
   const { productId } = await params;
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const { categoryId, tags } = parsed.data;
+  const data = parsed.data;
 
-  if (categoryId) {
-    const category = await prisma.category.findUnique({ where: { id: categoryId }, select: { id: true } });
+  if (data.categoryId) {
+    const category = await prisma.category.findUnique({ where: { id: data.categoryId }, select: { id: true } });
     if (!category) return NextResponse.json({ error: "Category not found" }, { status: 400 });
   }
 
@@ -35,21 +40,36 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
   });
   if (!existing) return NextResponse.json({ error: "Product not found" }, { status: 404 });
 
-  const inStock = existing.variants.some((v) => v.stock > 0);
-  const isActive = categoryId != null && inStock;
+  const updateData: Record<string, unknown> = {};
+  if (data.title !== undefined) updateData.title = data.title;
+  if (data.description !== undefined) updateData.description = data.description;
+  if (data.basePrice !== undefined) updateData.basePrice = data.basePrice;
+  if (data.compareAtPrice !== undefined) updateData.compareAtPrice = data.compareAtPrice;
+  if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
+  if (data.tags !== undefined) updateData.tags = data.tags;
+
+  // Status: honour an explicit isActive from the edit page. Otherwise keep
+  // the legacy behaviour of the quick-categorize flow (a product goes live
+  // once it has a category AND at least one variant in stock — that's how a
+  // Qikink-synced "hidden until tagged" product first becomes visible).
+  if (data.isActive !== undefined) {
+    updateData.isActive = data.isActive;
+  } else if (data.categoryId !== undefined) {
+    updateData.isActive = data.categoryId != null && existing.variants.some((v) => v.stock > 0);
+  }
 
   const product = await prisma.product.update({
     where: { id: productId },
-    data: { categoryId, tags, isActive },
+    data: updateData,
     include: { category: { select: { id: true, name: true } } },
   });
 
   await logFounderAction({
     founderUserId: session.user.id,
-    action: "product.categorized",
+    action: "product.updated",
     entityType: "Product",
     entityId: productId,
-    metadata: { categoryId, tags, isActive },
+    metadata: { fields: Object.keys(updateData) },
   });
 
   return NextResponse.json(product);
