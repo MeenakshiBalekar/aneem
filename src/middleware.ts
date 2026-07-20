@@ -13,8 +13,10 @@ const LIMITS: { pattern: RegExp; limit: number }[] = [
   { pattern: /^\/api\/checkout\//, limit: 20 },
   { pattern: /^\/api\/reviews$/, limit: 10 },
   // Founder login gets the tightest limit of anything in the app — it's the
-  // single highest-value credential-stuffing target.
+  // single highest-value credential-stuffing target. /check is the password
+  // pre-check the login form calls before signIn(), same target, same limit.
   { pattern: /^\/api\/founder-auth\/callback\/credentials$/, limit: 8 },
+  { pattern: /^\/api\/founder-auth\/check$/, limit: 8 },
 ];
 
 // Host that serves the Founder Portal. Set via env so dev (founder.localhost:3000)
