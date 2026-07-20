@@ -104,6 +104,13 @@ model ProductImage {
   altText     String?
   sortOrder   Int     @default(0)
   isLifestyle Boolean @default(false)
+  // Which color variant this photo shows — null means "applies regardless
+  // of color" (every image from CSV import, sync, or a single-photo
+  // upload is null). Only images added through the manual Add Product
+  // flow, where a founder uploads distinct front/back shots per color, set
+  // this, so the storefront can swap the gallery when a shopper picks a
+  // different color.
+  color       String?
 
   @@index([productId])
 }
