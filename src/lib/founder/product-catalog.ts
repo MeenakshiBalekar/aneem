@@ -64,6 +64,21 @@ export async function getProductsForImageAssignment(): Promise<ImageAssignmentPr
   return products.map((p) => ({ id: p.id, title: p.title, qikinkProductId: p.qikinkProductId, imageCount: p._count.images }));
 }
 
+/** Existing colors/sizes across the catalog — suggestions for the "Add
+ * Product" form's multi-select so a founder reuses "Navy Blue" instead of
+ * accidentally creating a near-duplicate "navy blue" / "NavyBlue". Founders
+ * can still type a new one that isn't in either list. */
+export async function getDistinctColorsAndSizes(): Promise<{ colors: string[]; sizes: string[] }> {
+  const [colorRows, sizeRows] = await Promise.all([
+    prisma.productVariant.findMany({ where: { color: { not: null } }, distinct: ["color"], select: { color: true } }),
+    prisma.productVariant.findMany({ distinct: ["size"], select: { size: true } }),
+  ]);
+  return {
+    colors: colorRows.map((r) => r.color).filter((c): c is string => !!c).sort(),
+    sizes: sizeRows.map((r) => r.size).sort(),
+  };
+}
+
 export interface CategoryTreeOption {
   id: string;
   name: string;

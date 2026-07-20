@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { getFilteredProducts, getCategoryTree, getProductsForImageAssignment } from "@/lib/founder/product-catalog";
 import { ProductFilterBar } from "@/components/founder/product-filter-bar";
 import { ProductCategorizerTable } from "@/components/founder/product-categorizer-table";
@@ -36,6 +38,12 @@ export default async function FounderProductsPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/founder/products/new"
+            className="bg-accent text-ink flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase hover:bg-white/90"
+          >
+            <Plus size={14} /> Add Product
+          </Link>
           <CatalogImportDialog />
           <BulkImageUploadDialog products={imageAssignmentProducts} />
           <FounderSyncButton />
