@@ -45,9 +45,16 @@ export const founderAuthOptions: NextAuthOptions = {
           "unknown";
         const email = credentials?.email?.toLowerCase().trim() ?? "";
 
+        // Throw (don't return null) — NextAuth v4 only propagates a specific
+        // error string to the client (res.error) when authorize() throws;
+        // returning null/false always collapses to the generic
+        // "CredentialsSignin", which is why the 2FA code prompt (checking
+        // res.error === "2FA_REQUIRED" in founder-login-form.tsx) never
+        // fired for any account with 2FA enabled — every login just looked
+        // like a wrong password, no matter how correct it was.
         const fail = async (reason: string) => {
           await logFounderLoginAttempt({ email, ipAddress, success: false, failureReason: reason });
-          return null;
+          throw new Error(reason);
         };
 
         if (!email || !credentials?.password) return fail("missing_credentials");
