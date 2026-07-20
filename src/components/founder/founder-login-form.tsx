@@ -18,16 +18,38 @@ export function FounderLoginForm() {
     e.preventDefault();
     setLoading(true);
 
+    // Decide whether to show the 2FA field ourselves, via a dedicated
+    // check — NextAuth's signIn() error message turned out not to be a
+    // reliable way to detect "this account needs a 2FA code" in a
+    // production build (only worked in local dev), so this doesn't depend
+    // on that at all. Only skip the check on the second submit, once we're
+    // already in the 2FA step and know the password was right.
+    if (!needsTotp) {
+      const checkRes = await fetch("/api/founder-auth/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const checkData = await checkRes.json().catch(() => ({ ok: false }));
+
+      if (!checkRes.ok || !checkData.ok) {
+        setLoading(false);
+        toast.error("Invalid credentials");
+        return;
+      }
+      if (checkData.requires2FA) {
+        setLoading(false);
+        setNeedsTotp(true);
+        toast("Enter your 2FA code", { icon: "🔐" });
+        return;
+      }
+    }
+
     const res = await signIn("credentials", { email, password, totpCode, redirect: false });
     setLoading(false);
 
-    if (res?.error === "2FA_REQUIRED") {
-      setNeedsTotp(true);
-      toast("Enter your 2FA code", { icon: "🔐" });
-      return;
-    }
     if (res?.error) {
-      toast.error("Invalid credentials");
+      toast.error(needsTotp ? "Invalid 2FA code" : "Invalid credentials");
       return;
     }
 
