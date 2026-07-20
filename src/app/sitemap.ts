@@ -3,6 +3,14 @@ import { prisma } from "@/lib/prisma";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
+// Without this, Next.js prerenders the sitemap at BUILD time — meaning a
+// database that's briefly unreachable during a Vercel build (e.g. Neon's
+// serverless compute waking up from idle autosuspend) fails the *entire*
+// deployment, not just this route. Forcing it to render per-request
+// instead makes builds independent of database timing; a sitemap doesn't
+// need to be static anyway.
+export const dynamic = "force-dynamic";
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [products, categories, bundles] = await Promise.all([
     prisma.product.findMany({ where: { isActive: true }, select: { slug: true, updatedAt: true } }),
