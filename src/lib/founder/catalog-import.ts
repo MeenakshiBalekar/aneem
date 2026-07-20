@@ -49,6 +49,29 @@ const SIZE_SUFFIX_RE = /-(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|4xl|5xl)$/i;
 
 const ACCESSORY_KEYWORDS = ["cap", "bottle", "tumbler", "bag", "sock", "mug", "accessor", "belt", "wallet"];
 
+// Canonical apparel size order — used to expand a "Size : XS - 3XL" range
+// (Qikink's "All Products" export only gives the endpoints, not each size).
+const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL", "6XL", "7XL"];
+
+function normalizeSizeToken(token: string): string {
+  const t = token.trim().toUpperCase();
+  if (t === "2XL") return "XXL";
+  if (t === "XXXL") return "3XL";
+  return t;
+}
+
+/** Expands "XS" .. "3XL" into every size between them in canonical order.
+ * Returns just the endpoint(s) if either can't be placed on the scale (so a
+ * weird custom size still produces at least one variant). */
+function expandSizeRange(minRaw: string, maxRaw: string): string[] {
+  const min = normalizeSizeToken(minRaw);
+  const max = normalizeSizeToken(maxRaw);
+  const i = SIZE_ORDER.indexOf(min);
+  const j = SIZE_ORDER.indexOf(max);
+  if (i === -1 || j === -1) return Array.from(new Set([min, max].filter(Boolean)));
+  return i <= j ? SIZE_ORDER.slice(i, j + 1) : SIZE_ORDER.slice(j, i + 1);
+}
+
 function normalizeHeader(h: string): string {
   return h
     .toLowerCase()
@@ -182,10 +205,94 @@ export interface CatalogImportParseResult {
   duplicateSkus: string[];
 }
 
+/** Parses Qikink's dashboard "All Products" export — a completely different
+ * shape from the per-SKU sheet: one row per product (a design you pushed to
+ * Qikink), with the real Qikink Product ID, and title/category/size-range/
+ * color-count all crammed into one "Products" text cell, plus a Selling
+ * Price range. It does NOT contain per-variant SKUs or color names, so this
+ * expands the "Size : XS - 3XL" range into one variant per size (color
+ * unknown) with a synthetic SKU. That's enough to get the products live,
+ * priced, and categorized on the storefront; real per-SKU data (for Qikink
+ * order fulfillment) still has to come from the SKU sheet. */
+function parseQikinkAllProductsExport(rowsAoA: unknown[][], headerRowIndex: number): CatalogImportParseResult {
+  const headerRow = rowsAoA[headerRowIndex].map((c) => normalizeHeader(String(c)));
+  const idCol = headerRow.indexOf("product id");
+  const productsCol = headerRow.indexOf("products");
+  const sellingPriceCol = headerRow.findIndex((h) => h.includes("selling price"));
+  const dataRows = rowsAoA.slice(headerRowIndex + 1);
+
+  const rowErrors: CatalogImportRowError[] = [];
+  const groups: CatalogImportProductGroup[] = [];
+  let importedRows = 0;
+
+  dataRows.forEach((cells, i) => {
+    if (cells.every((cell) => String(cell).trim() === "")) return;
+    const rowNumber = headerRowIndex + 2 + i;
+
+    const productId = String(cells[idCol] ?? "").trim();
+    const blob = String(cells[productsCol] ?? "").trim();
+    if (!productId || !blob) {
+      rowErrors.push({ rowNumber, errors: ["Missing Product ID or Products text"] });
+      return;
+    }
+
+    const segments = blob.split(/\s{2,}/).map((s) => s.trim()).filter(Boolean);
+    const full = segments.join(" ");
+    const title = segments[0] || `Product ${productId}`;
+    const categoryLine = segments[1] || "";
+
+    // "Unisex Varsity Jacket | UJ31" -> gender "Unisex", category "Varsity
+    // Jacket", styleCode "UJ31"; "Unisex Hoodie" -> gender + "Hoodie".
+    const styleCode = categoryLine.match(/\|\s*(\S+)\s*$/)?.[1];
+    const withoutCode = categoryLine.replace(/\s*\|\s*\S+\s*$/, "").trim();
+    const genderMatch = withoutCode.match(/^(unisex|men'?s?|women'?s?|male|female|kids?|boys?|girls?)\s+/i);
+    const genderName = genderMatch ? genderMatch[1].replace(/'?s$/i, "").replace(/^\w/, (c) => c.toUpperCase()) : "Unisex";
+    const categoryName = (genderMatch ? withoutCode.slice(genderMatch[0].length) : withoutCode).trim() || "Uncategorized";
+
+    const sizeMatch = full.match(/size\s*:\s*([A-Za-z0-9]+)\s*-\s*([A-Za-z0-9]+)/i);
+    const sizes = sizeMatch ? expandSizeRange(sizeMatch[1], sizeMatch[2]) : ["One Size"];
+
+    const sellingPrice = parseNumber(String(cells[sellingPriceCol] ?? "").split("-")[0]);
+    if (sellingPrice === null) {
+      rowErrors.push({ rowNumber, errors: [`Couldn't read a selling price for "${title}"`] });
+      return;
+    }
+
+    const rows: CatalogImportRow[] = sizes.map((size) => ({
+      rowNumber,
+      sku: `QK${productId}-${size}`,
+      title,
+      description: styleCode ? `${title} (style ${styleCode})` : title,
+      genderName,
+      categoryName,
+      colorName: "",
+      size,
+      basePrice: sellingPrice,
+      shippingWeightGrams: null,
+      taxRatePercent: null,
+      warnings: [],
+    }));
+
+    groups.push({
+      productKey: `qk${productId}`,
+      title,
+      description: styleCode ? `${title} (style ${styleCode})` : title,
+      genderName,
+      categoryName,
+      basePrice: sellingPrice,
+      rows,
+    });
+    importedRows += rows.length;
+  });
+
+  return { groups, totalRows: dataRows.length, importedRows, rowErrors, duplicateSkus: [] };
+}
+
 /** Reads an uploaded workbook (xlsx or csv — SheetJS handles both from the
  * same buffer) and produces validated, grouped rows. Never touches the
  * database — callers decide whether to just show this as a preview or
- * commit it. */
+ * commit it. Auto-detects the two Qikink export shapes: the per-SKU sheet
+ * and the "All Products" aggregate export. */
 export function parseCatalogWorkbook(buffer: Buffer): CatalogImportParseResult {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -199,8 +306,16 @@ export function parseCatalogWorkbook(buffer: Buffer): CatalogImportParseResult {
     (row) => row.filter((cell) => HEADER_ALIASES[normalizeHeader(String(cell))]).length >= 2,
   );
   if (headerRowIndex === -1) {
+    // Not the per-SKU sheet — try Qikink's "All Products" export shape
+    // (a Product ID + Products + Selling Price header row).
+    const aggIndex = rowsAoA.findIndex((row) => {
+      const norm = row.map((c) => normalizeHeader(String(c)));
+      return norm.includes("product id") && norm.includes("products");
+    });
+    if (aggIndex !== -1) return parseQikinkAllProductsExport(rowsAoA, aggIndex);
+
     throw new Error(
-      'Couldn\'t find a header row — expected column names like "SKU", "Category Name", "Base Price" somewhere near the top of the sheet.',
+      'Couldn\'t find a header row — expected either a per-SKU sheet (columns like "SKU", "Category Name", "Base Price") or a Qikink "All Products" export (columns "Product ID", "Products", "Selling Price").',
     );
   }
   const headerRow = rowsAoA[headerRowIndex];

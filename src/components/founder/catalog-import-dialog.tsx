@@ -155,8 +155,10 @@ export function CatalogImportDialog() {
               <div>
                 <h3 className="text-lg font-black uppercase">Import Catalog</h3>
                 <p className="mt-1 text-xs text-white/50">
-                  Upload a CSV or XLSX SKU sheet (columns: SKU, Product Description, Category Name, Gender Name, Color
-                  Name, Base Price, and optionally Size / Shipping Weight / Tax Rate %).
+                  Upload either Qikink export: the per-SKU sheet (SKU, Product Description, Category/Gender/Color Name,
+                  Base Price…) or the &quot;All Products&quot; export (Product ID, Products, Selling Price). The format is
+                  auto-detected. Note: the &quot;All Products&quot; export has no per-variant SKUs or colors, so products
+                  import priced and categorized but with placeholder size variants only.
                 </p>
               </div>
               <button aria-label="Close" onClick={close}>
