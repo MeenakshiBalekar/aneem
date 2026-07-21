@@ -1,21 +1,38 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 
+export type ProductStatusFilter = "all" | "active" | "draft";
+export type ProductSortKey = "updated" | "title" | "title_desc" | "price" | "price_desc";
+
 export interface ProductCatalogFilters {
   search?: string;
   uncategorized?: boolean;
+  status?: ProductStatusFilter;
 }
 
 const PAGE_SIZE = 50;
 
-/** Products for the Founder Portal's categorization workspace
- * (/founder/products) — every synced-but-uncategorized product lives here
- * until the founder assigns it a category, which is what actually makes it
- * live on the storefront (see upsertProductFromQikink). */
-export async function getFilteredProducts(filters: ProductCatalogFilters, opts: { page?: number } = {}) {
-  const page = Math.max(1, opts.page ?? 1);
+const SORT_ORDERS: Record<ProductSortKey, { title: "asc" | "desc" } | { basePrice: "asc" | "desc" } | { updatedAt: "desc" }> = {
+  updated: { updatedAt: "desc" },
+  title: { title: "asc" },
+  title_desc: { title: "desc" },
+  price: { basePrice: "asc" },
+  price_desc: { basePrice: "desc" },
+};
 
-  const where = {
+/** Products for the Founder Portal's products workspace (/founder/products)
+ * — Shopify-style list with status tabs, sortable columns, and search.
+ * A Qikink-synced product stays a hidden "draft" until the founder assigns
+ * it a category, which is what actually makes it live on the storefront
+ * (see upsertProductFromQikink). */
+export async function getFilteredProducts(
+  filters: ProductCatalogFilters,
+  opts: { page?: number; sort?: ProductSortKey } = {},
+) {
+  const page = Math.max(1, opts.page ?? 1);
+  const sort = opts.sort && opts.sort in SORT_ORDERS ? opts.sort : "updated";
+
+  const baseWhere = {
     ...(filters.uncategorized ? { categoryId: null } : {}),
     ...(filters.search
       ? {
@@ -26,8 +43,12 @@ export async function getFilteredProducts(filters: ProductCatalogFilters, opts: 
         }
       : {}),
   };
+  const where = {
+    ...baseWhere,
+    ...(filters.status === "active" ? { isActive: true } : filters.status === "draft" ? { isActive: false } : {}),
+  };
 
-  const [products, total, uncategorizedCount] = await Promise.all([
+  const [products, total, uncategorizedCount, allCount, activeCount] = await Promise.all([
     prisma.product.findMany({
       where,
       include: {
@@ -35,15 +56,24 @@ export async function getFilteredProducts(filters: ProductCatalogFilters, opts: 
         category: { select: { id: true, name: true } },
         variants: { select: { stock: true } },
       },
-      orderBy: { updatedAt: "desc" },
+      orderBy: SORT_ORDERS[sort],
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
     prisma.product.count({ where }),
     prisma.product.count({ where: { categoryId: null } }),
+    prisma.product.count({ where: baseWhere }),
+    prisma.product.count({ where: { ...baseWhere, isActive: true } }),
   ]);
 
-  return { products, total, page, pageSize: PAGE_SIZE, uncategorizedCount };
+  return {
+    products,
+    total,
+    page,
+    pageSize: PAGE_SIZE,
+    uncategorizedCount,
+    statusCounts: { all: allCount, active: activeCount, draft: allCount - activeCount },
+  };
 }
 
 export interface ImageAssignmentProduct {
